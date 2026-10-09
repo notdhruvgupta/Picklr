@@ -18,6 +18,7 @@ import {
   undoRally,
 } from "@/lib/data/actions";
 import { teamLabel, upcomingMatches } from "@/lib/data/selectors";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import { previewMatch, type Team } from "@/lib/elo";
 import * as fmt from "@/lib/format";
@@ -207,6 +208,7 @@ function RallyButton({
 function Pad({ match }: { match: Match }) {
   const router = useRouter();
   const { matches, ratings } = useData();
+  const { canEdit: canEditNext } = useOwnership();
   const confirm = useConfirm();
   const format = useMemo(() => formatOf(match), [match]);
   const [events, setEvents] = useState<RallyEvent[] | null>(null);
@@ -300,7 +302,7 @@ function Pad({ match }: { match: Match }) {
   };
 
   if (state.winner) {
-    const queue = upcomingMatches(matches, (m) => m.id !== match.id);
+    const queue = upcomingMatches(matches, (m) => m.id !== match.id && canEditNext(m.created_by));
     const nextUp = queue.find((m) => (match.session_id ? m.session_id === match.session_id : true));
     const done = match.status === "completed";
     const info = ratings.byMatch.get(match.id);
@@ -476,9 +478,20 @@ function Pad({ match }: { match: Match }) {
 export function ScoringPad() {
   const { id } = useParams<{ id: string }>();
   const { matches } = useData();
+  const { canEdit, ownerName } = useOwnership();
   const match = matches.get(id);
 
   if (!match) return <Empty title="Match not found" action={<ButtonLink href="/ref">Referee home</ButtonLink>} />;
+  if (!canEdit(match.created_by)) {
+    return (
+      <Empty
+        title={`${ownerName(match.created_by)} is running this match`}
+        action={<ButtonLink href={`/matches/${match.id}`} variant="secondary">Watch it live</ButtonLink>}
+      >
+        Only they can score it. They can hand it over to you from the match page if needed.
+      </Empty>
+    );
+  }
   if (match.team_a.length === 0 || match.team_b.length === 0) {
     return <Empty title="Waiting for players">This bracket match fills in when the earlier rounds finish.</Empty>;
   }

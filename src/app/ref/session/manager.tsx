@@ -7,10 +7,12 @@ import { TeamNames } from "@/components/bits";
 import { useConfirm } from "@/components/confirm";
 import { FormatFields, useRememberedFormat } from "@/components/format-fields";
 import { MatchRow, UpcomingRow, WinChanceBar } from "@/components/match";
+import { HandOver } from "@/components/ownership";
 import { SessionStandings, ShareRecap, sessionMatches } from "@/components/session";
 import { Button, ButtonLink, Card, ErrorNote, LiveBadge, PageTitle, SectionTitle, Segmented, cx } from "@/components/ui";
 import { createMatch, friendlyError, openSession, updateSession } from "@/lib/data/actions";
 import { playersByRating } from "@/lib/data/selectors";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import type { Mode } from "@/lib/elo";
 import { suggestNextMatch } from "@/lib/matchmaking";
@@ -58,6 +60,7 @@ function StartSession() {
       <PageTitle subtitle="Check in who's here. The app then suggests each next match so everyone plays a fair share, with fresh partners and close games.">
         Start a session
       </PageTitle>
+      <OtherSessions />
       <Segmented
         label="Session type"
         value={mode}
@@ -274,6 +277,10 @@ function OpenSession({ session }: { session: PlaySession }) {
         )}
       </section>
 
+      <section className="space-y-2">
+        <HandOver kind="session" id={session.id} owner={session.created_by} note="All of this session's matches go with it." />
+      </section>
+
       <div className="border-t border-line pt-6">
         <Button
           variant="danger"
@@ -306,6 +313,29 @@ function OpenSession({ session }: { session: PlaySession }) {
 
 export function SessionManager() {
   const { sessions } = useData();
-  const open = [...sessions.values()].filter((s) => s.status === "open").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const { canEdit } = useOwnership();
+  // Each referee runs their own session; other referees' sessions are read-only.
+  const open = [...sessions.values()]
+    .filter((s) => s.status === "open" && canEdit(s.created_by))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   return open ? <OpenSession session={open} /> : <StartSession />;
+}
+
+function OtherSessions() {
+  const { sessions } = useData();
+  const { canEdit, ownerName } = useOwnership();
+  const others = [...sessions.values()].filter((s) => s.status === "open" && !canEdit(s.created_by));
+  if (others.length === 0) return null;
+  return (
+    <Card className="p-4 text-sm">
+      {others.map((s) => (
+        <p key={s.id}>
+          <span className="font-semibold">{ownerName(s.created_by)}</span> is running a session with {s.present_player_ids.length} players.{" "}
+          <Link href={`/sessions/${s.id}`} className="font-semibold text-primary hover:underline">
+            View it
+          </Link>
+        </p>
+      ))}
+    </Card>
+  );
 }

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Button, Card, ErrorNote, Field, Input, PageTitle, SectionTitle, Toggle } from "@/components/ui";
-import { friendlyError, saveSettings } from "@/lib/data/actions";
+import { friendlyError, renameReferee, saveSettings } from "@/lib/data/actions";
 import { completedMatches, matchTime, teamLabel } from "@/lib/data/selectors";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import { DEFAULT_ELO_CONFIG, kFactor, movMultiplier, type EloConfig } from "@/lib/elo";
 import * as fmt from "@/lib/format";
@@ -21,12 +22,13 @@ const NUMBER_FIELDS: { key: keyof EloConfig; label: string; hint: string; min: n
 interface AuditRow {
   id: number;
   at: string;
+  user_id: string | null;
   action: string;
   entity: string;
   details: { old?: Record<string, unknown> | null; new?: Record<string, unknown> | null } | null;
 }
 
-function describe(row: AuditRow, playerName: (id: string) => string): string {
+function describe(row: AuditRow, playerName: (id: string) => string, refereeName: (id: string) => string | null): string {
   const after = row.details?.new ?? {};
   const before = row.details?.old ?? {};
   if (row.entity === "players") {
@@ -41,6 +43,7 @@ function describe(row: AuditRow, playerName: (id: string) => string): string {
     const teams = `${(m.team_a ?? []).map(playerName).join(" & ")} vs ${(m.team_b ?? []).map(playerName).join(" & ")}`;
     if (row.action === "insert") return `Created match ${teams}`;
     if (row.action === "delete") return `Deleted match ${teams}`;
+    if (before.created_by !== after.created_by && after.created_by) return `Handed match ${teams} to ${refereeName(after.created_by as string)}`;
     if (before.status !== after.status) return `Match ${teams}: ${before.status} → ${after.status}${m.games?.length ? ` (${fmt.gamesScore(m.games)})` : ""}`;
     if (JSON.stringify(before.games) !== JSON.stringify(after.games)) {
       return `Corrected ${teams}: ${fmt.gamesScore((before.games as { a: number; b: number }[]) ?? [])} → ${fmt.gamesScore(m.games ?? [])}`;
@@ -48,18 +51,25 @@ function describe(row: AuditRow, playerName: (id: string) => string): string {
     return `Edited match ${teams}`;
   }
   if (row.entity === "app_settings") return "Changed settings";
-  if (row.entity === "tournaments") return `${row.action === "insert" ? "Created" : "Updated"} tournament ${(after.name ?? before.name) as string}`;
+  if (row.entity === "tournaments") {
+    const tName = (after.name ?? before.name) as string;
+    if (row.action === "update" && before.created_by !== after.created_by && after.created_by) {
+      return `Handed tournament ${tName} to ${refereeName(after.created_by as string)}`;
+    }
+    return `${row.action === "insert" ? "Created" : row.action === "delete" ? "Deleted" : "Updated"} tournament ${tName}`;
+  }
   return `${row.action} ${row.entity}`;
 }
 
 function ChangeLog() {
   const { players } = useData();
+  const { ownerName, multiple } = useOwnership();
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     supabase
       .from("audit_log")
-      .select("id, at, action, entity, details")
+      .select("id, at, user_id, action, entity, details")
       .order("id", { ascending: false })
       .limit(60)
       .then(({ data, error: e }) => (e ? setError(e.message) : setRows(data as AuditRow[])));
@@ -77,11 +87,66 @@ function ChangeLog() {
               <span className="tabular w-28 shrink-0 text-xs text-muted">
                 {fmt.day(r.at)} {fmt.time(r.at)}
               </span>
-              <span className="min-w-0">{describe(r, name)}</span>
+              <span className="min-w-0">
+                {multiple && r.user_id && <span className="font-semibold">{ownerName(r.user_id)}: </span>}
+                {describe(r, name, ownerName)}
+              </span>
             </div>
           ))}
         </Card>
       )}
+    </section>
+  );
+}
+
+function RefereeSection() {
+  const { referees } = useData();
+  const { me, myName } = useOwnership();
+  const [name, setName] = useState(myName ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const list = [...referees.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+  const save = async () => {
+    if (!me) return;
+    if (!name.trim() || name.trim().length > 40) return setError("Enter a name of 1–40 characters.");
+    setError(null);
+    try {
+      await renameReferee(me, name);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(friendlyError(err));
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <SectionTitle>Referees</SectionTitle>
+      <Field label="Your name" htmlFor="ref-name" hint="Shown to everyone on the matches, sessions and tournaments you run.">
+        <div className="flex gap-2">
+          <Input id="ref-name" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+          <Button onClick={save} disabled={!name.trim() || name.trim() === myName}>
+            {saved ? "Saved" : "Save"}
+          </Button>
+        </div>
+      </Field>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="text-sm">
+        <p className="mb-2 text-muted">
+          {list.length === 1 ? "You're the only referee." : `${list.length} referees.`} Each one can only change the matches, sessions and
+          tournaments they started, unless it&apos;s handed over to them. Players and rating settings are shared.
+        </p>
+        <ul className="flex flex-wrap gap-2">
+          {list.map((r) => (
+            <li key={r.user_id} className="rounded-full bg-surface-2 px-3 py-1 font-medium">
+              {r.display_name}
+              {r.user_id === me && <span className="text-muted"> (you)</span>}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-muted">To add a referee, run npm run referee:create with their email, password and name (see README).</p>
+      </div>
     </section>
   );
 }
@@ -144,6 +209,8 @@ export function Settings() {
   return (
     <div className="space-y-8">
       <PageTitle>Settings</PageTitle>
+
+      <RefereeSection />
 
       <section className="space-y-4">
         <SectionTitle>Group</SectionTitle>

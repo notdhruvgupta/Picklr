@@ -15,7 +15,19 @@ import { DEFAULT_ELO_CONFIG, computeRatings, type EloConfig, type EloMatch, type
 import { supabase } from "@/lib/supabase";
 import type { AppSettings, Match, Player, TableName, Tables } from "@/lib/types";
 
-const TABLES: TableName[] = ["players", "matches", "tournaments", "tournament_entries", "sessions", "app_settings"];
+const TABLES: TableName[] = ["players", "matches", "tournaments", "tournament_entries", "sessions", "app_settings", "referees"];
+
+/** Primary key column per table (referees are keyed by their auth user id). */
+const KEY: Record<TableName, string> = {
+  players: "id",
+  matches: "id",
+  tournaments: "id",
+  tournament_entries: "id",
+  sessions: "id",
+  app_settings: "id",
+  referees: "user_id",
+};
+const keyOf = (table: TableName, row: unknown) => String((row as Record<string, string | number>)[KEY[table]]);
 const PAGE = 1000;
 
 type Rows = { [K in TableName]: Map<string, Tables[K]> };
@@ -39,6 +51,7 @@ const emptyRows = (): Rows => ({
   tournament_entries: new Map(),
   sessions: new Map(),
   app_settings: new Map(),
+  referees: new Map(),
 });
 
 function reducer(state: State, action: Action): State {
@@ -47,7 +60,7 @@ function reducer(state: State, action: Action): State {
       return { rows: action.rows, status: "ready", error: null };
     case "upsert": {
       const table = new Map(state.rows[action.table] as Map<string, Tables[TableName]>);
-      table.set(String((action.row as { id: string | number }).id), action.row);
+      table.set(keyOf(action.table, action.row), action.row);
       return { ...state, rows: { ...state.rows, [action.table]: table } };
     }
     case "delete": {
@@ -66,7 +79,7 @@ async function fetchTable<T extends TableName>(table: T): Promise<Tables[T][]> {
     const { data, error } = await supabase
       .from(table)
       .select("*")
-      .order("id")
+      .order(KEY[table])
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     all.push(...(data as Tables[T][]));
@@ -79,7 +92,7 @@ async function fetchAll(): Promise<Rows> {
   const rows = emptyRows();
   TABLES.forEach((t, i) => {
     const map = rows[t] as Map<string, Tables[TableName]>;
-    for (const row of results[i]) map.set(String((row as { id: string | number }).id), row);
+    for (const row of results[i]) map.set(keyOf(t, row), row);
   });
   return rows;
 }
@@ -95,6 +108,7 @@ interface DataContextValue {
   tournaments: Rows["tournaments"];
   entries: Rows["tournament_entries"];
   sessions: Rows["sessions"];
+  referees: Rows["referees"];
   settings: AppSettings | null;
   config: EloConfig;
   ratings: RatingsResult;
@@ -146,7 +160,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const apply = (table: TableName, payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       const action: Action =
         payload.eventType === "DELETE"
-          ? { type: "delete", table, id: String((payload.old as { id: string | number }).id) }
+          ? { type: "delete", table, id: keyOf(table, payload.old) }
           : { type: "upsert", table, row: payload.new as unknown as Tables[TableName] };
       if (loading.current) buffered.current.push(action);
       else dispatch(action);
@@ -229,6 +243,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       tournaments: state.rows.tournaments,
       entries: state.rows.tournament_entries,
       sessions: state.rows.sessions,
+      referees: state.rows.referees,
       settings,
       config,
       ratings,

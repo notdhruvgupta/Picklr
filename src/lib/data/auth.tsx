@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 
 interface AuthValue {
   session: Session | null;
+  /** Signed-in user's id (also their referee id), or null. */
+  userId: string | null;
   isReferee: boolean;
   /** True until the stored session (if any) has been checked. */
   checking: boolean;
@@ -49,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthValue>(
     () => ({
       session,
+      userId: session?.user.id ?? null,
       isReferee,
       checking,
       signIn: async (email, password) => {

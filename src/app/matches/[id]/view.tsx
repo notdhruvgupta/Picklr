@@ -5,13 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Delta, TeamNames } from "@/components/bits";
 import { useConfirm } from "@/components/confirm";
+import { HandOver, NotYours, RunBy } from "@/components/ownership";
 import { GamesInput, filledGames } from "@/components/games-input";
 import { TvIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
 import { Scoreboard, WinChanceBar, formatLabel, formatOf, useWinChance } from "@/components/match";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, LiveBadge, SectionTitle } from "@/components/ui";
 import { completeMatch, deleteMatch, friendlyError, updateMatch } from "@/lib/data/actions";
-import { useAuth } from "@/lib/data/auth";
+import { useOwnership } from "@/lib/data/ownership";
 import { matchTime, teamLabel } from "@/lib/data/selectors";
 import { useData } from "@/lib/data/store";
 import type { GameResult } from "@/lib/elo";
@@ -215,6 +216,7 @@ function RefereePanel({ match }: { match: Match }) {
           </Button>
         )}
       </div>
+      {!inTournament && !match.session_id && <HandOver kind="match" id={match.id} owner={match.created_by} />}
       {inTournament && (
         <p className="text-xs text-muted">
           Tournament matches can be corrected but not archived or deleted, so the bracket stays consistent. To stop a tournament, cancel it from its page.
@@ -227,7 +229,7 @@ function RefereePanel({ match }: { match: Match }) {
 
 function MatchDetail({ id }: { id: string }) {
   const { matches, tournaments } = useData();
-  const { isReferee } = useAuth();
+  const { canEdit } = useOwnership();
   const match = matches.get(id);
   const chance = useWinChance(match ?? ({ team_a: [], team_b: [] } as unknown as Match));
 
@@ -245,6 +247,7 @@ function MatchDetail({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge match={match} />
         <span className="text-sm text-muted">{formatLabel(match)}</span>
+        <RunBy owner={match.created_by} className="text-sm text-muted" />
         {!match.is_rated && <Badge>Unrated</Badge>}
         <span className="text-sm text-muted">· {fmt.day(matchTime(match))}, {fmt.time(matchTime(match))}</span>
         {match.status === "live" && (
@@ -270,7 +273,11 @@ function MatchDetail({ id }: { id: string }) {
         {chance !== null && match.status !== "void" && <WinChanceBar chance={chance} className="mt-4 px-1" />}
       </Card>
 
-      {isReferee && <RefereePanel key={`${match.id}-${match.updated_at}`} match={match} />}
+      {canEdit(match.created_by) ? (
+        <RefereePanel key={`${match.id}-${match.updated_at}`} match={match} />
+      ) : (
+        <NotYours owner={match.created_by} kind="match" />
+      )}
 
       {match.status === "completed" && match.is_rated && <EloBreakdown match={match} />}
       {match.status === "completed" && !match.is_rated && (

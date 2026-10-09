@@ -9,6 +9,7 @@ import { WinChanceBar } from "@/components/match";
 import { TeamPicker, teamsFrom, type Assignment } from "@/components/team-picker";
 import { Button, Card, ErrorNote, PageTitle, SectionTitle, Segmented, Toggle, cx } from "@/components/ui";
 import { completeMatch, createMatch, deleteMatch, friendlyError } from "@/lib/data/actions";
+import { useOwnership } from "@/lib/data/ownership";
 import { teamLabel } from "@/lib/data/selectors";
 import { useData } from "@/lib/data/store";
 import { previewMatch, type GameResult, type Mode } from "@/lib/elo";
@@ -31,7 +32,9 @@ export function NewMatchForm() {
   const perTeam = mode === "doubles" ? 2 : 1;
   const { teamA, teamB } = teamsFrom(assignment);
   const ready = teamA.length === perTeam && teamB.length === perTeam;
-  const openSession = [...sessions.values()].find((s) => s.status === "open" && s.mode === mode);
+  const { canEdit } = useOwnership();
+  // New matches join the referee's own open session (never another referee's).
+  const openSession = [...sessions.values()].find((s) => s.status === "open" && s.mode === mode && canEdit(s.created_by));
   const matchFormat: MatchFormat = { mode, ...format };
 
   const stats = (id: string) => ratings.players.get(id)?.[mode] ?? { rating: config.baseRating, matches: 0 };
@@ -94,7 +97,7 @@ export function NewMatchForm() {
 
   return (
     <div className="space-y-6">
-      <PageTitle subtitle={openSession ? "This match will be added to today's session." : undefined}>New match</PageTitle>
+      <PageTitle subtitle={openSession ? "This match will be added to your session." : undefined}>New match</PageTitle>
 
       <Segmented
         label="Match type"
