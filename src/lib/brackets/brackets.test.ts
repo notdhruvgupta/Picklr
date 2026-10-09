@@ -141,6 +141,33 @@ describe("roundRobin", () => {
     }
   });
 
+  it("double and triple round robins meet every pair 2 or 3 times, swapping sides each cycle", () => {
+    for (const cycles of [2, 3]) {
+      for (const n of [3, 4, 5, 6]) {
+        const rounds = roundRobin(n, cycles);
+        const single = roundRobin(n);
+        expect(rounds).toHaveLength(single.length * cycles);
+        const meetings = new Map<string, [number, number][]>();
+        for (const round of rounds) {
+          const inRound = new Set<number>();
+          for (const [a, b] of round) {
+            expect(inRound.has(a) || inRound.has(b)).toBe(false);
+            inRound.add(a).add(b);
+            const k = [a, b].sort((x, y) => x - y).join("-");
+            meetings.set(k, [...(meetings.get(k) ?? []), [a, b]]);
+          }
+        }
+        expect(meetings.size).toBe((n * (n - 1)) / 2);
+        for (const games of meetings.values()) {
+          expect(games).toHaveLength(cycles);
+          // Consecutive meetings of the same pair have opposite sides.
+          for (let i = 1; i < games.length; i++) expect(games[i]).toEqual([games[i - 1][1], games[i - 1][0]]);
+        }
+      }
+    }
+    expect(() => roundRobin(4, 0)).toThrow();
+  });
+
   it("gives each team one bye when the count is odd", () => {
     expect(roundRobin(5)).toHaveLength(5);
     expect(roundRobin(5).every((r) => r.length === 2)).toBe(true);

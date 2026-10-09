@@ -205,9 +205,14 @@ function finalize(all: BracketMatch[]): BracketMatch[] {
   return kept;
 }
 
-/** Circle-method round robin. Returns rounds of [seedA, seedB] pairs; odd counts get a rotating bye. */
-export function roundRobin(entryCount: number): [number, number][][] {
+/**
+ * Circle-method round robin. Returns rounds of [seedA, seedB] pairs; odd counts get a rotating bye.
+ * With `cycles` > 1 (double/triple round robin) the whole schedule repeats, with sides swapped on
+ * every other cycle so each pairing alternates who is team A.
+ */
+export function roundRobin(entryCount: number, cycles = 1): [number, number][][] {
   if (!Number.isInteger(entryCount) || entryCount < 2) throw new Error("A round robin needs at least 2 entries");
+  if (!Number.isInteger(cycles) || cycles < 1) throw new Error("A round robin needs at least one cycle");
   const ids = Array.from({ length: entryCount }, (_, i) => i + 1);
   if (entryCount % 2 === 1) ids.push(0); // 0 = bye
   const n = ids.length;
@@ -225,7 +230,11 @@ export function roundRobin(entryCount: number): [number, number][][] {
     rounds.push(pairs);
     order = [order[0], order[n - 1], ...order.slice(1, n - 1)];
   }
-  return rounds;
+  const all: [number, number][][] = [];
+  for (let c = 0; c < cycles; c++) {
+    for (const round of rounds) all.push(c % 2 === 0 ? round : round.map(([x, y]) => [y, x] as [number, number]));
+  }
+  return all;
 }
 
 export interface StandingsResult {

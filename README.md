@@ -12,10 +12,10 @@ Live scores, Elo ratings, sessions and tournaments for a small pickleball group.
 | **Elo ratings** | Separate singles and doubles ratings, updated after every match. Margin of victory counts, and new players move faster (provisional K). |
 | **Live scoring** | Tap who won each rally. Side-out (with server 1/2 and "0-0-2") or rally scoring, games to 7/9/11/15/21, win by 1 or 2, single game or best of 3. Includes undo, score correction, game/match point, and "switch ends". |
 | **Sessions** | Check in who showed up. The app suggests each next match: fair rotation, fresh partners, closest odds. Shows the day's standings and a shareable recap. |
-| **Tournaments** | Round robin (optionally followed by a top-2/top-4 playoff), single elimination, or double elimination with a grand-final reset. Seeded by Elo, with byes going to the top seeds. Doubles teams can be balanced, snake-drafted, random, or fixed. |
+| **Tournaments** | Single, double or triple round robin (optionally followed by a top-2/top-4 playoff), single elimination, or double elimination with a grand-final reset. Seeded by Elo, with byes going to the top seeds. Doubles teams can be balanced, snake-drafted, random, or fixed. |
 | **Fair teams** | Pick any four players and see all three possible splits with win chances. |
 | **Stats** | Rating charts, partners, toughest opponents, head-to-head, streaks, records, biggest upsets. |
-| **Admin** | Edit or void results, rated/unrated matches, starting ratings, rating settings, change log, CSV export. |
+| **Admin** | Edit results, archive (hide and stop rating; restorable) or permanently delete matches, cancel tournaments, rated/unrated matches, starting ratings, rating settings, change log, CSV export. |
 | **Mobile** | Phone-first layout, installable to the home screen, and a TV scoreboard mode that keeps the screen awake. |
 
 ## How it works

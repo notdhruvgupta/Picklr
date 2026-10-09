@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TeamNames } from "@/components/bits";
+import { useConfirm } from "@/components/confirm";
 import { FormatFields, useRememberedFormat } from "@/components/format-fields";
 import { MatchRow, UpcomingRow, WinChanceBar } from "@/components/match";
 import { SessionStandings, ShareRecap, sessionMatches } from "@/components/session";
@@ -103,6 +104,7 @@ function StartSession() {
 function OpenSession({ session }: { session: PlaySession }) {
   const router = useRouter();
   const { players, matches, ratings, config } = useData();
+  const confirm = useConfirm();
   const [seed, setSeed] = useState(1);
   const [editing, setEditing] = useState(false);
   const [format, setFormat] = useRememberedFormat();
@@ -276,7 +278,14 @@ function OpenSession({ session }: { session: PlaySession }) {
         <Button
           variant="danger"
           onClick={async () => {
-            if (live.length && !confirm("A match is still live. End the session anyway?")) return;
+            const ok = await confirm({
+              title: "End today's session?",
+              body: live.length
+                ? "A match is still being played. It stays live and can still be finished; it just won't be suggested from a session any more."
+                : "All results are kept. You can start a new session any time.",
+              confirmLabel: "End session",
+            });
+            if (!ok) return;
             try {
               await updateSession(session.id, { status: "closed", closed_at: new Date().toISOString() });
               router.push(`/sessions/${session.id}`);

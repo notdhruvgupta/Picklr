@@ -23,6 +23,7 @@ export function NewTournament() {
   const { players, ratings, config } = useData();
   const [name, setName] = useState(defaultName);
   const [format, setFormat] = useState<TournamentFormat>("round_robin");
+  const [cycles, setCycles] = useState(1);
   const [mode, setMode] = useState<Mode>("doubles");
   const [formation, setFormation] = useState<TeamFormationChoice>("balanced");
   const [selected, setSelected] = useState<string[]>([]);
@@ -64,7 +65,7 @@ export function NewTournament() {
   const seeded = [...teams].sort((a, b) => b.reduce((s, id) => s + rating(id), 0) / b.length - a.reduce((s, id) => s + rating(id), 0) / a.length);
   const preview = seeded.length >= 2
     ? buildTournamentMatches(
-        { id: "preview", format, mode, scoring: scoring.scoring, pointsToWin: scoring.pointsToWin, winBy: scoring.winBy, bestOf: scoring.bestOf, isRated: rated },
+        { id: "preview", format, mode, scoring: scoring.scoring, pointsToWin: scoring.pointsToWin, winBy: scoring.winBy, bestOf: scoring.bestOf, isRated: rated, cycles },
         seeded.map((ids, i) => ({ id: `e${i}`, seed: i + 1, playerIds: ids })),
         (() => {
           let n = 0;
@@ -84,7 +85,7 @@ export function NewTournament() {
       const tournamentId = crypto.randomUUID();
       const entries: EntrySpec[] = seeded.map((ids, i) => ({ id: crypto.randomUUID(), seed: i + 1, playerIds: ids }));
       const matches = buildTournamentMatches(
-        { id: tournamentId, format, mode, scoring: scoring.scoring, pointsToWin: scoring.pointsToWin, winBy: scoring.winBy, bestOf: scoring.bestOf, isRated: rated },
+        { id: tournamentId, format, mode, scoring: scoring.scoring, pointsToWin: scoring.pointsToWin, winBy: scoring.winBy, bestOf: scoring.bestOf, isRated: rated, cycles },
         entries,
         () => crypto.randomUUID(),
       );
@@ -101,6 +102,7 @@ export function NewTournament() {
             win_by: scoring.winBy,
             best_of: scoring.bestOf,
             playoff_size: format === "round_robin" ? playoff : 0,
+            round_robin_cycles: format === "round_robin" ? cycles : 1,
             is_rated: rated,
           },
           p_entries: entries.map((e) => ({ id: e.id, tournament_id: tournamentId, seed: e.seed, name: null, player_ids: e.playerIds })),
@@ -124,8 +126,17 @@ export function NewTournament() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Format">
-          <Select value={format} onChange={(e) => setFormat(e.target.value as TournamentFormat)}>
-            <option value="round_robin">Round robin (everyone plays everyone)</option>
+          <Select
+            value={format === "round_robin" ? `round_robin:${cycles}` : format}
+            onChange={(e) => {
+              const [f, c] = e.target.value.split(":");
+              setFormat(f as TournamentFormat);
+              setCycles(Number(c ?? 1));
+            }}
+          >
+            <option value="round_robin:1">Round robin (everyone plays everyone once)</option>
+            <option value="round_robin:2">Double round robin (everyone plays everyone twice)</option>
+            <option value="round_robin:3">Triple round robin (everyone plays everyone 3 times)</option>
             <option value="single_elim">Single elimination</option>
             <option value="double_elim">Double elimination</option>
           </Select>
@@ -223,7 +234,7 @@ export function NewTournament() {
             </p>
           )}
           <p className="mt-2 text-sm text-muted">
-            {formatName(format)}: {preview.filter((m) => !m.is_conditional).length + playoffMatchCount} matches
+            {formatName(format, cycles)}: {preview.filter((m) => !m.is_conditional).length + playoffMatchCount} matches
             {format === "double_elim" ? " (+1 if the grand final needs a reset)" : ""}.
           </p>
         </section>

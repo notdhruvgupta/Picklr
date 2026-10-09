@@ -36,7 +36,7 @@ export function PageTitle({ children, subtitle, action }: { children: ReactNode;
   );
 }
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "ball";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "destructive" | "ball";
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
@@ -44,6 +44,8 @@ const variants: Record<Variant, string> = {
   secondary: "border border-line bg-surface text-text hover:bg-surface-2",
   ghost: "text-text hover:bg-surface-2",
   danger: "border border-loss/40 bg-surface text-loss hover:bg-loss/10",
+  // Text uses the page background so it contrasts with the loss colour in both themes.
+  destructive: "bg-loss text-bg hover:brightness-95",
   ball: "bg-ball text-ball-fg hover:brightness-95",
 };
 

@@ -18,6 +18,8 @@ export interface TournamentSpec {
   winBy: number;
   bestOf: number;
   isRated: boolean;
+  /** Round robin only: how many times each pair meets (1–3). */
+  cycles?: number;
 }
 
 export interface EntrySpec {
@@ -123,7 +125,10 @@ export function eliminationMatches(
 export function roundRobinMatches(t: TournamentSpec, entries: EntrySpec[], newId: () => string): MatchInsert[] {
   const bySeed = new Map(entries.map((e) => [e.seed, e]));
   const rows: MatchInsert[] = [];
-  roundRobin(entries.length).forEach((round, r) => {
+  const cycles = t.cycles ?? 1;
+  const perCycle = roundRobin(entries.length).length;
+  roundRobin(entries.length, cycles).forEach((round, r) => {
+    const label = cycles > 1 ? `Leg ${Math.floor(r / perCycle) + 1} · Round ${(r % perCycle) + 1}` : `Round ${r + 1}`;
     for (const [sa, sb] of round) {
       const a = bySeed.get(sa)!;
       const b = bySeed.get(sb)!;
@@ -133,7 +138,7 @@ export function roundRobinMatches(t: TournamentSpec, entries: EntrySpec[], newId
         queue_position: rows.length + 1,
         bracket_key: null,
         bracket_round: r + 1,
-        bracket_label: `Round ${r + 1}`,
+        bracket_label: label,
         stage: "group",
         entry_a_id: a.id,
         entry_b_id: b.id,
@@ -176,6 +181,7 @@ export function playoffMatches(
   }));
 }
 
-export function formatName(format: TournamentFormat): string {
-  return { round_robin: "Round robin", single_elim: "Single elimination", double_elim: "Double elimination" }[format];
+export function formatName(format: TournamentFormat, cycles = 1): string {
+  if (format === "round_robin") return cycles === 3 ? "Triple round robin" : cycles === 2 ? "Double round robin" : "Round robin";
+  return { single_elim: "Single elimination", double_elim: "Double elimination" }[format];
 }

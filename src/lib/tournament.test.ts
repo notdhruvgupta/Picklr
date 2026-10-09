@@ -28,6 +28,22 @@ describe("buildTournamentMatches", () => {
     expect(rows.map((r) => r.queue_position)).toEqual(rows.map((_, i) => i + 1));
   });
 
+  it("double and triple round robins repeat every pairing, labelled by leg", () => {
+    for (const cycles of [2, 3]) {
+      const rows = buildTournamentMatches({ ...spec("round_robin"), cycles }, entries(4), ids());
+      expect(rows).toHaveLength(6 * cycles);
+      const pairs = new Map<string, number>();
+      for (const r of rows) {
+        const k = [r.entry_a_id, r.entry_b_id].sort().join("|");
+        pairs.set(k, (pairs.get(k) ?? 0) + 1);
+      }
+      expect([...pairs.values()].every((n) => n === cycles)).toBe(true);
+      expect(rows[0].bracket_label).toBe("Leg 1 · Round 1");
+      expect(rows[rows.length - 1].bracket_label).toBe(`Leg ${cycles} · Round 3`);
+      expect(rows[rows.length - 1].bracket_round).toBe(3 * cycles);
+    }
+  });
+
   it("single elimination wires winners forward and fills only the first-round slots", () => {
     const rows = buildTournamentMatches(spec("single_elim"), entries(5), ids());
     expect(rows).toHaveLength(4);

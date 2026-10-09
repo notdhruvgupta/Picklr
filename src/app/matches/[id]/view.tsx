@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Delta, TeamNames } from "@/components/bits";
+import { useConfirm } from "@/components/confirm";
 import { GamesInput, filledGames } from "@/components/games-input";
 import { TvIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
@@ -21,7 +22,7 @@ import type { Match } from "@/lib/types";
 function StatusBadge({ match }: { match: Match }) {
   if (match.status === "live") return <LiveBadge />;
   if (match.status === "completed") return <Badge tone="primary">Final</Badge>;
-  if (match.status === "void") return <Badge tone="loss">Voided</Badge>;
+  if (match.status === "void") return <Badge tone="loss">{match.tournament_id ? "Not played" : "Archived"}</Badge>;
   return <Badge>Scheduled</Badge>;
 }
 
@@ -82,6 +83,7 @@ function EloBreakdown({ match }: { match: Match }) {
 function RefereePanel({ match }: { match: Match }) {
   const router = useRouter();
   const { players } = useData();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [games, setGames] = useState<(GameResult | null)[]>(match.games);
   const [error, setError] = useState<string | null>(null);
@@ -160,19 +162,22 @@ function RefereePanel({ match }: { match: Match }) {
         )}
         {match.status === "completed" && !inTournament && (
           <Button
-            variant="danger"
+            variant="secondary"
             size="sm"
             disabled={busy}
-            onClick={() => {
-              if (confirm("Void this match? It stays on record but stops counting toward ratings.")) {
-                void run(() => updateMatch(match.id, { status: "void" }));
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Archive this match?",
+                body: "It's hidden from match lists and stops counting toward ratings. You can restore it any time from Matches → Archived.",
+                confirmLabel: "Archive",
+              });
+              if (ok) await run(() => updateMatch(match.id, { status: "void" }));
             }}
           >
-            Void
+            Archive
           </Button>
         )}
-        {match.status === "void" && (
+        {match.status === "void" && !inTournament && (
           <Button
             variant="secondary"
             size="sm"
@@ -182,26 +187,38 @@ function RefereePanel({ match }: { match: Match }) {
             Restore
           </Button>
         )}
-        {!inTournament && match.status !== "live" && (
+        {!inTournament && (
           <Button
             variant="danger"
             size="sm"
             disabled={busy}
-            onClick={() => {
-              if (confirm("Delete this match permanently? Ratings will be recalculated without it.")) {
-                void run(async () => {
-                  await deleteMatch(match.id);
-                  router.push("/matches");
-                });
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Delete this match permanently?",
+                body:
+                  match.status === "live"
+                    ? "It's being played right now. The score so far is thrown away and can't be recovered."
+                    : match.status === "completed"
+                      ? "The result is removed for good and every rating is recalculated without it. To keep it on record instead, archive it."
+                      : "It's removed from the queue for good.",
+                confirmLabel: "Delete match",
+                danger: true,
+              });
+              if (!ok) return;
+              await run(async () => {
+                await deleteMatch(match.id);
+                router.push("/matches");
+              });
             }}
           >
             Delete
           </Button>
         )}
       </div>
-      {inTournament && match.status === "completed" && (
-        <p className="text-xs text-muted">Tournament matches can be corrected but not voided or deleted, so the bracket stays consistent.</p>
+      {inTournament && (
+        <p className="text-xs text-muted">
+          Tournament matches can be corrected but not archived or deleted, so the bracket stays consistent. To stop a tournament, cancel it from its page.
+        </p>
       )}
       <ErrorNote>{error}</ErrorNote>
     </Card>

@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Avatar } from "@/components/bits";
+import { useConfirm } from "@/components/confirm";
 import { Badge, Button, Card, ErrorNote, Field, Input, PageTitle, SectionTitle, Toggle } from "@/components/ui";
 import { deletePlayer, friendlyError, savePlayer } from "@/lib/data/actions";
 import { useData } from "@/lib/data/store";
@@ -87,6 +88,7 @@ function PlayerForm({ draft, onDone }: { draft: Draft; onDone: () => void }) {
 
 export function ManagePlayers() {
   const { players, ratings, config } = useData();
+  const confirm = useConfirm();
   const params = useSearchParams();
   const router = useRouter();
   const editId = params.get("edit");
@@ -151,7 +153,13 @@ export function ManagePlayers() {
                     variant="ghost"
                     size="sm"
                     onClick={async () => {
-                      if (!confirm(`Delete ${p.name}? This can't be undone.`)) return;
+                      const ok = await confirm({
+                        title: `Delete ${p.name}?`,
+                        body: "They have no matches, so nothing else changes. This can't be undone.",
+                        confirmLabel: "Delete player",
+                        danger: true,
+                      });
+                      if (!ok) return;
                       try {
                         setError(null);
                         await deletePlayer(p.id);

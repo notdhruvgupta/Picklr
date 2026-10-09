@@ -56,7 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error ? error.message : null;
       },
       signOut: async () => {
-        await supabase.auth.signOut();
+        // Only this device: a global sign-out would also log the referee out on their other devices.
+        await supabase.auth.signOut({ scope: "local" });
       },
     }),
     [session, isReferee, checking],

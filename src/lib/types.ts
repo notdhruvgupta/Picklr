@@ -65,6 +65,8 @@ export interface Tournament {
   win_by: number;
   best_of: number;
   playoff_size: number;
+  /** Round robin only: times each pair meets (1 single, 2 double, 3 triple). */
+  round_robin_cycles: number;
   is_rated: boolean;
   status: "active" | "completed" | "cancelled";
   winner_entry_id: string | null;

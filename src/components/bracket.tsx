@@ -42,7 +42,7 @@ export function BracketMatchCard({ match }: { match: Match }) {
       <div className="flex items-center justify-between border-b border-line bg-surface-2/60 px-2.5 py-1 text-[11px] font-semibold text-muted">
         <span className="truncate">{match.bracket_label}</span>
         {match.status === "live" && <span className="text-live">LIVE</span>}
-        {match.status === "void" && <span>Not needed</span>}
+        {match.status === "void" && <span>Not played</span>}
         {pending && <span>If needed</span>}
       </div>
       <Slot match={match} team="A" entry={a} />

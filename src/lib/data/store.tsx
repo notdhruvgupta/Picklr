@@ -181,10 +181,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
+    // Coming back online: changes may have been missed while the socket was down.
+    const onOnline = () => void load.current();
+    window.addEventListener("online", onOnline);
 
     return () => {
       clearTimeout(fallback);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
       void supabase.removeChannel(channel);
     };
   }, []);

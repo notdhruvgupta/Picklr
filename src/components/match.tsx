@@ -70,7 +70,8 @@ export function MatchRow({ match, showDate = true }: { match: Match; showDate?: 
         {showDate && <span>{fmt.day(matchTime(match))}</span>}
         <span>{formatLabel(match)}</span>
         {tournament && <span className="truncate">· {match.bracket_label ?? tournament.name}</span>}
-        {!match.is_rated && <Badge>Unrated</Badge>}
+        {match.status === "void" && <Badge tone="loss">{match.tournament_id ? "Not played" : "Archived"}</Badge>}
+        {!match.is_rated && match.status !== "void" && <Badge>Unrated</Badge>}
         {upset && <Badge tone="ball">Upset</Badge>}
       </div>
     </Link>

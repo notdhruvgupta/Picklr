@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { TeamNames } from "@/components/bits";
 import { Bracket } from "@/components/bracket";
+import { useConfirm } from "@/components/confirm";
 import { TrophyIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
 import { MatchRow, UpcomingRow, formatLabel } from "@/components/match";
@@ -73,6 +74,7 @@ function groupStandings(group: Match[], entries: TournamentEntry[]): Standing[] 
 
 function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; table: Standing[] }) {
   const { entries } = useData();
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const group = list.filter((m) => m.stage === "group");
@@ -118,12 +120,22 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
       );
     });
 
-  const cancel = () =>
-    run(async () => {
-      if (!confirm("Cancel this tournament? Played matches stay on record; unplayed ones are removed from the queue.")) return;
-      check(await supabase.from("matches").update({ status: "void" }).eq("tournament_id", t.id).eq("status", "scheduled"));
-      check(await supabase.from("tournaments").update({ status: "cancelled" }).eq("id", t.id));
+  const cancel = async () => {
+    const live = list.filter((m) => m.status === "live").length;
+    const ok = await confirm({
+      title: `Cancel ${t.name}?`,
+      body: (
+        <>
+          Completed matches stay on record and keep counting toward ratings. Unplayed matches are removed from the queue
+          {live > 0 ? <>, and the match being played now is stopped</> : null}. This can&apos;t be undone.
+        </>
+      ),
+      confirmLabel: "Cancel tournament",
+      cancelLabel: "Keep it",
+      danger: true,
     });
+    if (ok) await run(async () => void check(await supabase.rpc("cancel_tournament", { p_tournament_id: t.id })));
+  };
 
   if (t.status !== "active") return null;
   return (
@@ -167,7 +179,7 @@ function TournamentDetail({ t }: { t: Tournament }) {
   return (
     <div className="space-y-8">
       <PageTitle
-        subtitle={`${formatName(t.format)}${isRR && t.playoff_size ? ` + top-${t.playoff_size} playoff` : ""} · ${t.mode} · ${formatLabel({ mode: t.mode, scoring: t.scoring, points_to_win: t.points_to_win, best_of: t.best_of }).split(" · ").slice(1).join(" · ")}${t.is_rated ? "" : " · unrated"}`}
+        subtitle={`${formatName(t.format, t.round_robin_cycles)}${isRR && t.playoff_size ? ` + top-${t.playoff_size} playoff` : ""} · ${t.mode} · ${formatLabel({ mode: t.mode, scoring: t.scoring, points_to_win: t.points_to_win, best_of: t.best_of }).split(" · ").slice(1).join(" · ")}${t.is_rated ? "" : " · unrated"}`}
       >
         <span className="flex flex-wrap items-center gap-2">
           {t.name}
@@ -227,10 +239,10 @@ function TournamentDetail({ t }: { t: Tournament }) {
             <SectionTitle>Matches</SectionTitle>
             {[...rounds.entries()].map(([round, ms]) => (
               <div key={round}>
-                <h3 className="mb-2 text-sm font-semibold text-muted">Round {round}</h3>
+                <h3 className="mb-2 text-sm font-semibold text-muted">{ms[0].bracket_label ?? `Round ${round}`}</h3>
                 <Card className="divide-y divide-line overflow-hidden">
                   {ms.map((m) =>
-                    m.status === "completed" ? <MatchRow key={m.id} match={m} showDate={false} /> : <UpcomingRow key={m.id} match={m} />,
+                    m.status === "completed" || m.status === "void" ? <MatchRow key={m.id} match={m} showDate={false} /> : <UpcomingRow key={m.id} match={m} />,
                   )}
                 </Card>
               </div>

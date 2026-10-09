@@ -26,7 +26,7 @@ function Row({ t }: { t: Tournament }) {
           {t.status === "cancelled" && <Badge>Cancelled</Badge>}
         </div>
         <div className="truncate text-xs text-muted">
-          {formatName(t.format)} · {t.mode} · {fmt.day(t.created_at)}
+          {formatName(t.format, t.round_robin_cycles)} · {t.mode} · {fmt.day(t.created_at)}
           {winner ? (
             <>
               {" "}

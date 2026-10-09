@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BallIcon, Delta, TeamNames } from "@/components/bits";
+import { useConfirm } from "@/components/confirm";
 import { UndoIcon } from "@/components/icons";
 import { formatLabel, formatOf } from "@/components/match";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, Field, Input, Segmented, Spinner, cx } from "@/components/ui";
@@ -206,6 +207,7 @@ function RallyButton({
 function Pad({ match }: { match: Match }) {
   const router = useRouter();
   const { matches, ratings } = useData();
+  const confirm = useConfirm();
   const format = useMemo(() => formatOf(match), [match]);
   const [events, setEvents] = useState<RallyEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -448,7 +450,13 @@ function Pad({ match }: { match: Match }) {
           variant="ghost"
           size="sm"
           onClick={async () => {
-            if (!confirm("Abandon this match? The score is cleared and the match goes back to the queue.")) return;
+            const ok = await confirm({
+              title: "Abandon this match?",
+              body: "The score is cleared and the match goes back to the queue. To get rid of it entirely, delete it from the match page.",
+              confirmLabel: "Abandon",
+              danger: true,
+            });
+            if (!ok) return;
             try {
               await chain.current;
               await resetMatch(match.id);

@@ -28,6 +28,7 @@ function Matches() {
   const [mode, setMode] = useState<Mode | "all">("all");
   const [playerId, setPlayerId] = useState("");
   const [limit, setLimit] = useState(PAGE);
+  const [showArchived, setShowArchived] = useState(false);
 
   const filter = (m: Match) =>
     (mode === "all" || m.mode === mode) && (!playerId || m.team_a.includes(playerId) || m.team_b.includes(playerId));
@@ -35,6 +36,10 @@ function Matches() {
   const upcoming = upcomingMatches(matches).filter(filter);
   const done = completedMatches(matches, filter);
   const shown = done.slice(0, limit);
+  // Archived (voided) friendly matches: only the referee needs to find them, to restore or delete.
+  const archived = isReferee
+    ? [...matches.values()].filter((m) => m.status === "void" && !m.tournament_id && filter(m)).sort((a, b) => matchTime(b).localeCompare(matchTime(a)))
+    : [];
 
   return (
     <>
@@ -115,6 +120,21 @@ function Matches() {
               Show more
             </Button>
           </div>
+        )}
+
+        {archived.length > 0 && (
+          <section>
+            <SectionTitle
+              action={
+                <Button variant="ghost" size="sm" onClick={() => setShowArchived((v) => !v)}>
+                  {showArchived ? "Hide" : `Show ${archived.length}`}
+                </Button>
+              }
+            >
+              Archived · only you see these
+            </SectionTitle>
+            {showArchived && <MatchList matches={archived} />}
+          </section>
         )}
       </div>
     </>
