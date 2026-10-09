@@ -138,7 +138,7 @@ export function Settings() {
         };
         return [matchTime(m), m.mode, teamLabel(players, m.team_a), teamLabel(players, m.team_b), fmt.gamesScore(m.games), m.winner ?? "", String(m.is_rated), avg("A"), avg("B")];
       });
-    exportCsv([header, ...rows], `pickleball-matches-${new Date().toISOString().slice(0, 10)}.csv`);
+    exportCsv([header, ...rows], `picklr-matches-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   return (

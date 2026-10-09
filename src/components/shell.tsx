@@ -116,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2 font-bold tracking-tight">
             <BallIcon className="size-7 shrink-0" />
-            <span className="truncate">{settings?.group_name ?? "Pickleball Elo"}</span>
+            <span className="truncate">{settings?.group_name ?? "Picklr"}</span>
           </Link>
           <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Main">
             <Suspense fallback={null}>

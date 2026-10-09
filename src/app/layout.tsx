@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Pickleball Elo", template: "%s · Pickleball Elo" },
+  title: { default: "Picklr", template: "%s · Picklr" },
   description: "Live scores, Elo ratings and tournaments for our pickleball group.",
-  applicationName: "Pickleball Elo",
-  appleWebApp: { capable: true, title: "Pickleball", statusBarStyle: "default" },
+  applicationName: "Picklr",
+  appleWebApp: { capable: true, title: "Picklr", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

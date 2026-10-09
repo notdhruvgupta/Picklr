@@ -1,4 +1,4 @@
-# Pickleball Elo
+# Picklr
 
 Live scores, Elo ratings, sessions and tournaments for a small pickleball group.
 

@@ -12,7 +12,7 @@ export interface FormatChoice {
 }
 
 const DEFAULT: FormatChoice = { scoring: "sideout", pointsToWin: 11, winBy: 2, bestOf: 1 };
-const KEY = "pb:last-format";
+const KEY = "picklr:last-format";
 
 /** Last-used format, remembered on this device. */
 export function useRememberedFormat(): [FormatChoice, (f: FormatChoice) => void] {

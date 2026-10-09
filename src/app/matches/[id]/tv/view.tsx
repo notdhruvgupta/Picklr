@@ -32,7 +32,7 @@ export function TvView() {
     <div className="fixed inset-0 z-50 flex flex-col bg-bg p-6 sm:p-10">
       <div className="flex items-center justify-between text-muted">
         <span className="flex items-center gap-3 text-xl font-bold text-text">
-          <BallIcon className="size-8" /> {settings?.group_name ?? "Pickleball Elo"}
+          <BallIcon className="size-8" /> {settings?.group_name ?? "Picklr"}
         </span>
         <span className="flex items-center gap-3">
           {shown?.status === "live" && <LiveBadge />}

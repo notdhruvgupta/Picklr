@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Pickleball Elo",
-    short_name: "Pickleball",
+    name: "Picklr",
+    short_name: "Picklr",
     description: "Live scores, Elo ratings and tournaments for our pickleball group.",
     start_url: "/",
     display: "standalone",

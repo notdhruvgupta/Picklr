@@ -80,7 +80,7 @@ export function ShareRecap({ session }: { session: PlaySession }) {
   if (completed.length === 0) return null;
 
   const text = [
-    `${settings?.group_name ?? "Pickleball"} · ${fmt.day(session.created_at)}`,
+    `${settings?.group_name ?? "Picklr"} · ${fmt.day(session.created_at)}`,
     `${completed.length} matches · ${lines.length} players`,
     "",
     ...lines.map((l, i) => {

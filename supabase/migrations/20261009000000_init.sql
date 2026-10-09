@@ -1,4 +1,4 @@
--- Pickleball Elo schema.
+-- Picklr schema.
 --
 -- Ratings are not stored: every client replays completed matches through the
 -- Elo engine (src/lib/elo), so ratings can never drift out of sync with history.
@@ -34,7 +34,7 @@ $$;
 
 create table public.app_settings (
   id smallint primary key default 1 check (id = 1),
-  group_name text not null default 'Pickleball Elo',
+  group_name text not null default 'Picklr',
   -- Partial EloConfig; missing keys fall back to DEFAULT_ELO_CONFIG.
   elo jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
