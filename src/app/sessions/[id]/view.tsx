@@ -4,15 +4,16 @@ import { useParams } from "next/navigation";
 import { TeamNames } from "@/components/bits";
 import { WhenReady } from "@/components/loading";
 import { LiveMatchCard, MatchList, UpcomingRow } from "@/components/match";
+import { RunBy } from "@/components/ownership";
 import { SessionStandings, ShareRecap, useSessionSummary } from "@/components/session";
 import { Badge, ButtonLink, Card, Empty, PageTitle, SectionTitle } from "@/components/ui";
-import { useAuth } from "@/lib/data/auth";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import * as fmt from "@/lib/format";
 import type { PlaySession } from "@/lib/types";
 
 function Session({ session }: { session: PlaySession }) {
-  const { isReferee } = useAuth();
+  const { canEdit } = useOwnership();
   const { list, completed } = useSessionSummary(session);
   const live = list.filter((m) => m.status === "live");
   const queued = list.filter((m) => m.status === "scheduled");
@@ -22,12 +23,13 @@ function Session({ session }: { session: PlaySession }) {
         subtitle={
           <>
             {session.mode === "doubles" ? "Doubles" : "Singles"} · {completed.length} matches · <TeamNames list ids={session.present_player_ids} link={false} />
+            <RunBy owner={session.created_by} className="block" />
           </>
         }
         action={
           <div className="flex gap-2">
             <ShareRecap session={session} />
-            {isReferee && session.status === "open" && (
+            {canEdit(session.created_by) && session.status === "open" && (
               <ButtonLink href="/ref/session" size="sm">
                 Manage
               </ButtonLink>

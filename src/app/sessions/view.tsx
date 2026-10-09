@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronRight } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
+import { RunBy } from "@/components/ownership";
 import { useSessionSummary } from "@/components/session";
 import { Badge, Card, Empty, PageTitle } from "@/components/ui";
 import { useData } from "@/lib/data/store";
@@ -23,6 +24,7 @@ function SessionRow({ session }: { session: PlaySession }) {
         <div className="truncate text-xs text-muted">
           {completed.length} matches · {session.present_player_ids.length} players
           {mvp && mvp.delta > 0 ? ` · MVP ${players.get(mvp.playerId)?.name}` : ""}
+          <RunBy owner={session.created_by} className="before:content-['_·_']" />
         </div>
       </div>
       <ChevronRight className="size-4 text-muted" />

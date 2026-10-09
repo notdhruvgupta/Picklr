@@ -9,6 +9,7 @@ import { LiveMatchCard, MatchList, UpcomingRow } from "@/components/match";
 import { ButtonLink, Card, Empty, SectionTitle } from "@/components/ui";
 import { useAuth } from "@/lib/data/auth";
 import { completedMatches, liveMatches, upcomingMatches } from "@/lib/data/selectors";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import { useNow } from "@/lib/hooks/use-now";
 import * as fmt from "@/lib/format";
@@ -85,7 +86,8 @@ function Home() {
   const live = liveMatches(matches);
   const upcoming = upcomingMatches(matches).slice(0, 4);
   const recent = completedMatches(matches).slice(0, 6);
-  const openSession = [...sessions.values()].find((s) => s.status === "open");
+  const openSessions = [...sessions.values()].filter((s) => s.status === "open").sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const { multiple, ownerName } = useOwnership();
 
   return (
     <div className="space-y-8">
@@ -100,10 +102,13 @@ function Home() {
         </section>
       )}
 
-      {openSession && (
-        <Card className="flex items-center gap-3 border-ball/50 p-4">
+      {openSessions.map((openSession) => (
+        <Card key={openSession.id} className="flex items-center gap-3 border-ball/50 p-4">
           <div className="min-w-0 flex-1">
-            <div className="font-semibold">Session in progress</div>
+            <div className="font-semibold">
+              Session in progress
+              {multiple && openSession.created_by && <span className="font-normal text-muted"> · {ownerName(openSession.created_by)}</span>}
+            </div>
             <div className="truncate text-sm text-muted">
               {openSession.present_player_ids.length} checked in:{" "}
               {openSession.present_player_ids.map((id) => players.get(id)?.name).filter(Boolean).join(", ")}
@@ -113,7 +118,7 @@ function Home() {
             View
           </ButtonLink>
         </Card>
-      )}
+      ))}
 
       {upcoming.length > 0 && (
         <section>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { TeamNames } from "@/components/bits";
 import { ChevronRight, TrophyIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
+import { RunBy } from "@/components/ownership";
 import { Badge, ButtonLink, Card, Empty, PageTitle, SectionTitle } from "@/components/ui";
 import { useAuth } from "@/lib/data/auth";
 import { useData } from "@/lib/data/store";
@@ -27,6 +28,7 @@ function Row({ t }: { t: Tournament }) {
         </div>
         <div className="truncate text-xs text-muted">
           {formatName(t.format, t.round_robin_cycles)} · {t.mode} · {fmt.day(t.created_at)}
+          <RunBy owner={t.created_by} className="before:content-['_·_']" />
           {winner ? (
             <>
               {" "}

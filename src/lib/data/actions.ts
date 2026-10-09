@@ -138,10 +138,23 @@ export async function updateSession(id: string, patch: Partial<PlaySession>): Pr
   check(await supabase.from("sessions").update(patch).eq("id", id));
 }
 
+export type OwnedKind = "match" | "session" | "tournament";
+
+/** Pass something you run (with everything in it) to another referee. */
+export async function handOver(kind: OwnedKind, id: string, to: string): Promise<void> {
+  check(await supabase.rpc("hand_over", { p_kind: kind, p_id: id, p_to: to }));
+}
+
+export async function renameReferee(userId: string, name: string): Promise<void> {
+  check(await supabase.from("referees").update({ display_name: name.trim() }).eq("user_id", userId));
+}
+
 export function friendlyError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
+  // Ownership errors from the database already name the referee ("Only Gaurav can change this match.").
+  if (/^Only .+ can /.test(message) && !/Only the referee/.test(message)) return message;
   if (/row-level security|permission denied|Only the referee/i.test(message)) {
-    return "You need to be signed in as the referee to do that.";
+    return "You can't change this: it's run by another referee, or you're not signed in as a referee.";
   }
   if (/Failed to fetch|NetworkError/i.test(message)) return "Can't reach the server. Check your connection and try again.";
   return message;

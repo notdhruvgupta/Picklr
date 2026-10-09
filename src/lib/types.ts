@@ -47,6 +47,8 @@ export interface Match {
   completed_at: string | null;
   played_at: string | null;
   notes: string | null;
+  /** Referee who runs this match (null for legacy rows: any referee may edit). */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +72,7 @@ export interface Tournament {
   is_rated: boolean;
   status: "active" | "completed" | "cancelled";
   winner_entry_id: string | null;
+  created_by: string | null;
   created_at: string;
   completed_at: string | null;
 }
@@ -88,8 +91,15 @@ export interface PlaySession {
   status: "open" | "closed";
   mode: Mode;
   present_player_ids: string[];
+  created_by: string | null;
   created_at: string;
   closed_at: string | null;
+}
+
+export interface Referee {
+  user_id: string;
+  display_name: string;
+  created_at: string;
 }
 
 export interface AppSettings {
@@ -106,6 +116,7 @@ export interface Tables {
   tournament_entries: TournamentEntry;
   sessions: PlaySession;
   app_settings: AppSettings;
+  referees: Referee;
 }
 
 export type TableName = keyof Tables;

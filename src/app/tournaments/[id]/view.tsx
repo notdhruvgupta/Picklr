@@ -5,13 +5,14 @@ import { useState } from "react";
 import { TeamNames } from "@/components/bits";
 import { Bracket } from "@/components/bracket";
 import { useConfirm } from "@/components/confirm";
+import { HandOver, NotYours, RunBy } from "@/components/ownership";
 import { TrophyIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
 import { MatchRow, UpcomingRow, formatLabel } from "@/components/match";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, PageTitle, SectionTitle } from "@/components/ui";
 import { standings, type Standing } from "@/lib/brackets";
 import { friendlyError } from "@/lib/data/actions";
-import { useAuth } from "@/lib/data/auth";
+import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import { check, supabase } from "@/lib/supabase";
 import { formatName, playoffMatches } from "@/lib/tournament";
@@ -156,6 +157,7 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
           Cancel tournament
         </Button>
       </div>
+      <HandOver kind="tournament" id={t.id} owner={t.created_by} note="All of its matches go with it." />
       <ErrorNote>{error}</ErrorNote>
     </Card>
   );
@@ -163,7 +165,8 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
 
 function TournamentDetail({ t }: { t: Tournament }) {
   const { matches, entries } = useData();
-  const { isReferee } = useAuth();
+  const { canEdit } = useOwnership();
+  const mine = canEdit(t.created_by);
   const list = [...matches.values()].filter((m) => m.tournament_id === t.id).sort((a, b) => (a.queue_position ?? 0) - (b.queue_position ?? 0));
   const tEntries = [...entries.values()].filter((e) => e.tournament_id === t.id).sort((a, b) => a.seed - b.seed);
   const group = list.filter((m) => m.stage === "group");
@@ -188,6 +191,8 @@ function TournamentDetail({ t }: { t: Tournament }) {
         </span>
       </PageTitle>
 
+      <RunBy owner={t.created_by} className="-mt-3 block text-sm text-muted" />
+
       {champion && (
         <Card className="flex items-center gap-4 border-ball bg-ball/10 p-5">
           <TrophyIcon className="size-10 shrink-0" />
@@ -200,7 +205,7 @@ function TournamentDetail({ t }: { t: Tournament }) {
         </Card>
       )}
 
-      {isReferee && <RefereeActions t={t} list={list} table={table} />}
+      {mine ? <RefereeActions t={t} list={list} table={table} /> : t.status === "active" && <NotYours owner={t.created_by} kind="tournament" />}
 
       {(live.length > 0 || next.length > 0) && t.status === "active" && (
         <section>
@@ -211,7 +216,7 @@ function TournamentDetail({ t }: { t: Tournament }) {
                 <div className="min-w-0 flex-1">
                   <UpcomingRow match={m} index={m.status === "live" ? undefined : i - live.length} />
                 </div>
-                {isReferee && (
+                {mine && (
                   <ButtonLink href={`/ref/score/${m.id}`} size="sm" className="mr-4">
                     {m.status === "live" ? "Score" : "Start"}
                   </ButtonLink>
