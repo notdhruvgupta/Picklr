@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f4f6ef;
+  --surface: #ffffff;
+  --surface-2: #ecf0e5;
+  --text: #11201a;
+  --muted: #5a6b62;
+  --line: #dbe2d5;
+  --primary: #0f5c45;
+  --primary-strong: #0a4635;
+  --primary-fg: #ffffff;
+  --ball: #d6f04a;
+  --ball-fg: #1d2a00;
+  --win: #11804a;
+  --loss: #c2410c;
+  --live: #e11d48;
+  --team-a: #0f766e;
+  --team-b: #7c3aed;
+  --chart-1: #2a78d6;
+  --chart-context: #c5cfc0;
+  --chart-grid: #e6ebe1;
+  --shadow: 0 1px 2px rgb(17 32 26 / 0.06), 0 4px 16px rgb(17 32 26 / 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1310;
+    --surface: #111c17;
+    --surface-2: #192720;
+    --text: #e7efe9;
+    --muted: #8fa298;
+    --line: #23332b;
+    --primary: #2fb87f;
+    --primary-strong: #47cf95;
+    --primary-fg: #04140d;
+    --ball: #d6f04a;
+    --ball-fg: #1d2a00;
+    --win: #3ddc97;
+    --loss: #fb8b4b;
+    --live: #fb4f72;
+    --team-a: #2dd4bf;
+    --team-b: #a78bfa;
+    --chart-1: #3987e5;
+    --chart-context: #34463d;
+    --chart-grid: #1d2b24;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-fg: var(--primary-fg);
+  --color-ball: var(--ball);
+  --color-ball-fg: var(--ball-fg);
+  --color-win: var(--win);
+  --color-loss: var(--loss);
+  --color-live: var(--live);
+  --color-team-a: var(--team-a);
+  --color-team-b: var(--team-b);
+  --color-chart-1: var(--chart-1);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow);
+}
+
+html {
+  color-scheme: light dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.live-dot {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.score-pop {
+  animation: score-pop 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .score-pop {
+    animation: none;
+  }
+}
