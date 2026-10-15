@@ -109,6 +109,12 @@ export function NewTournament() {
           p_matches: matches,
         }),
       );
+      // This page stays alive (hidden) after navigating away; start the next tournament from a clean form.
+      setName(defaultName());
+      setSelected([]);
+      setFixedTeams([]);
+      setError(null);
+      setBusy(false);
       router.push(`/tournaments/${tournamentId}`);
     } catch (err) {
       setError(friendlyError(err));

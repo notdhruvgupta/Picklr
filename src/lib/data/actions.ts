@@ -98,6 +98,14 @@ export async function resetMatch(matchId: string): Promise<void> {
   );
 }
 
+/**
+ * Correct who played. In a tournament this changes the team (entry) in all its
+ * matches; the database does it atomically and checks ownership.
+ */
+export async function setMatchPlayers(matchId: string, teamA: string[], teamB: string[]): Promise<void> {
+  check(await supabase.rpc("set_match_players", { p_match_id: matchId, p_team_a: teamA, p_team_b: teamB }));
+}
+
 export async function updateMatch(matchId: string, patch: Partial<Match>): Promise<void> {
   check(await supabase.from("matches").update(patch).eq("id", matchId));
 }

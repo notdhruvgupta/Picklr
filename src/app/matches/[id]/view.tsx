@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { Delta, TeamNames } from "@/components/bits";
 import { useConfirm } from "@/components/confirm";
 import { HandOver, NotYours, RunBy } from "@/components/ownership";
@@ -10,8 +10,9 @@ import { GamesInput, filledGames } from "@/components/games-input";
 import { TvIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
 import { Scoreboard, WinChanceBar, formatLabel, formatOf, useWinChance } from "@/components/match";
+import { TeamPicker, teamsFrom, type Assignment } from "@/components/team-picker";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, LiveBadge, SectionTitle } from "@/components/ui";
-import { completeMatch, deleteMatch, friendlyError, updateMatch } from "@/lib/data/actions";
+import { completeMatch, deleteMatch, friendlyError, setMatchPlayers, updateMatch } from "@/lib/data/actions";
 import { useOwnership } from "@/lib/data/ownership";
 import { matchTime, teamLabel } from "@/lib/data/selectors";
 import { useData } from "@/lib/data/store";
@@ -156,6 +157,11 @@ function RefereePanel({ match }: { match: Match }) {
             Edit result
           </Button>
         )}
+        {match.status !== "void" && match.team_a.length > 0 && match.team_b.length > 0 && (
+          <ButtonLink href={`/matches/${match.id}?edit=players`} replace scroll={false} variant="secondary" size="sm">
+            Change players
+          </ButtonLink>
+        )}
         {match.status === "completed" && (
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => run(() => updateMatch(match.id, { is_rated: !match.is_rated }))}>
             {match.is_rated ? "Make unrated" : "Make rated"}
@@ -227,9 +233,90 @@ function RefereePanel({ match }: { match: Match }) {
   );
 }
 
+const sameSet = (x: string[], y: string[]) => x.length === y.length && x.every((id) => y.includes(id));
+
+/** Fix who played, e.g. when the wrong player was picked. */
+function ChangePlayers({ match }: { match: Match }) {
+  const router = useRouter();
+  const { matches, tournaments } = useData();
+  const confirm = useConfirm();
+  const [assignment, setAssignment] = useState<Assignment>(() =>
+    Object.fromEntries([...match.team_a.map((id) => [id, "A"]), ...match.team_b.map((id) => [id, "B"])]),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
+  // On phones the editor opens below the fold; bring it into view.
+  // (Block body: newer browsers return a Promise from scrollIntoView, and an effect must return nothing.)
+  useEffect(() => {
+    card.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const { teamA, teamB } = teamsFrom(assignment);
+  const perTeam = match.mode === "doubles" ? 2 : 1;
+  const complete = teamA.length === perTeam && teamB.length === perTeam;
+  const unchanged = sameSet(teamA, match.team_a) && sameSet(teamB, match.team_b);
+  const tournament = match.tournament_id ? tournaments.get(match.tournament_id) : undefined;
+  const entryIds = [match.entry_a_id, match.entry_b_id].filter(Boolean);
+  const affected = tournament
+    ? [...matches.values()].filter(
+        (m) => m.tournament_id === tournament.id && (entryIds.includes(m.entry_a_id) || entryIds.includes(m.entry_b_id)),
+      ).length
+    : 1;
+  const close = () => router.replace(`/matches/${match.id}`, { scroll: false });
+
+  const save = async () => {
+    if (tournament && affected > 1) {
+      const ok = await confirm({
+        title: "Change this team across the tournament?",
+        body: `In ${tournament.name} a team plays several matches, so this updates ${affected} matches, not just this one.`,
+        confirmLabel: "Change players",
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await setMatchPlayers(match.id, teamA, teamB);
+      close();
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card ref={card} className="scroll-mt-20 space-y-4 border-primary/50 p-4">
+      <div>
+        <h2 className="font-semibold">Change players</h2>
+        <p className="text-sm text-muted">
+          Tap once for team A, twice for team B, again to remove.
+          {match.status === "completed" && match.is_rated && " Ratings are recalculated with the right players."}
+          {tournament && affected > 1 && ` This changes the team in all ${affected} of its ${tournament.name} matches.`}
+        </p>
+      </div>
+      <TeamPicker mode={match.mode} value={assignment} onChange={setAssignment} include={[...match.team_a, ...match.team_b]} />
+      <ErrorNote>{error}</ErrorNote>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={save} disabled={!complete || unchanged || busy}>
+          {busy ? "Saving…" : "Save players"}
+        </Button>
+        <Button variant="ghost" onClick={close} disabled={busy}>
+          Cancel
+        </Button>
+        {!complete && <span className="self-center text-xs text-muted">Each team needs {perTeam} player{perTeam > 1 ? "s" : ""}.</span>}
+      </div>
+    </Card>
+  );
+}
+
 function MatchDetail({ id }: { id: string }) {
   const { matches, tournaments } = useData();
   const { canEdit } = useOwnership();
+  // Open state lives in the URL: the referee panel remounts on every score update,
+  // and Next keeps this page alive between visits, so component state would go stale.
+  const changingPlayers = useSearchParams().get("edit") === "players";
   const match = matches.get(id);
   const chance = useWinChance(match ?? ({ team_a: [], team_b: [] } as unknown as Match));
 
@@ -274,7 +361,10 @@ function MatchDetail({ id }: { id: string }) {
       </Card>
 
       {canEdit(match.created_by) ? (
-        <RefereePanel key={`${match.id}-${match.updated_at}`} match={match} />
+        <>
+          <RefereePanel key={`${match.id}-${match.updated_at}`} match={match} />
+          {changingPlayers && match.status !== "void" && <ChangePlayers match={match} />}
+        </>
       ) : (
         <NotYours owner={match.created_by} kind="match" />
       )}

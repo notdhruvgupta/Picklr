@@ -48,6 +48,12 @@ function describe(row: AuditRow, playerName: (id: string) => string, refereeName
     if (JSON.stringify(before.games) !== JSON.stringify(after.games)) {
       return `Corrected ${teams}: ${fmt.gamesScore((before.games as { a: number; b: number }[]) ?? [])} → ${fmt.gamesScore(m.games ?? [])}`;
     }
+    const beforeIds = [...((before.team_a as string[]) ?? []), ...((before.team_b as string[]) ?? [])];
+    const afterIds = [...(m.team_a ?? []), ...(m.team_b ?? [])];
+    const out = beforeIds.filter((id) => !afterIds.includes(id)).map(playerName);
+    const inn = afterIds.filter((id) => !beforeIds.includes(id)).map(playerName);
+    if (out.length || inn.length) return `Changed players in ${teams}: ${out.join(" & ") || "–"} → ${inn.join(" & ") || "–"}`;
+    if (beforeIds.join() !== afterIds.join()) return `Swapped sides in ${teams}`;
     return `Edited match ${teams}`;
   }
   if (row.entity === "app_settings") return "Changed settings";

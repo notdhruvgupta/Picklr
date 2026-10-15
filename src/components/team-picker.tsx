@@ -17,16 +17,21 @@ export function TeamPicker({
   value,
   onChange,
   only,
+  include = [],
 }: {
   mode: Mode;
   value: Assignment;
   onChange: (a: Assignment) => void;
   /** Restrict to these players (e.g. those checked in). */
   only?: string[];
+  /** Always list these players, even if inactive or outside `only` (e.g. a match's current players). */
+  include?: string[];
 }) {
   const { players, ratings } = useData();
   const perTeam = mode === "doubles" ? 2 : 1;
-  const list = playersByRating(players, ratings, mode).filter((p) => !only || only.includes(p.id));
+  const list = playersByRating(players, ratings, mode, false).filter(
+    (p) => include.includes(p.id) || (p.is_active && (!only || only.includes(p.id))),
+  );
   const count = (team: Team) => Object.values(value).filter((t) => t === team).length;
 
   const tap = (id: string) => {
