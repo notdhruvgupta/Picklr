@@ -14,6 +14,7 @@ import { formTeams } from "@/lib/matchmaking";
 import { seededRandom } from "@/lib/random";
 import { check, supabase } from "@/lib/supabase";
 import { buildTournamentMatches, formatName, type EntrySpec } from "@/lib/tournament";
+import { TeamTournamentForm } from "./team-form";
 import type { TeamFormationChoice, TournamentFormat } from "@/lib/types";
 
 const defaultName = () => `${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date())} tournament`;
@@ -133,7 +134,7 @@ export function NewTournament() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Format">
           <Select
-            value={format === "round_robin" ? `round_robin:${cycles}` : format}
+            value={format === "round_robin" || format === "team_round_robin" ? `${format}:${cycles}` : format}
             onChange={(e) => {
               const [f, c] = e.target.value.split(":");
               setFormat(f as TournamentFormat);
@@ -145,23 +146,27 @@ export function NewTournament() {
             <option value="round_robin:3">Triple round robin (everyone plays everyone 3 times)</option>
             <option value="single_elim">Single elimination</option>
             <option value="double_elim">Double elimination</option>
+            <option value="team_round_robin:2">Team tournament · double round robin (teams of 3)</option>
+            <option value="team_round_robin:3">Team tournament · triple round robin (teams of 3)</option>
           </Select>
         </Field>
-        <Field label="Type">
-          <Segmented
-            label="Tournament type"
-            className="w-full"
-            value={mode}
-            onChange={(m) => {
-              setMode(m);
-              setFixedTeams([]);
-            }}
-            options={[
-              { value: "doubles", label: "Doubles" },
-              { value: "singles", label: "Singles" },
-            ]}
-          />
-        </Field>
+        {format !== "team_round_robin" && (
+          <Field label="Type">
+            <Segmented
+              label="Tournament type"
+              className="w-full"
+              value={mode}
+              onChange={(m) => {
+                setMode(m);
+                setFixedTeams([]);
+              }}
+              options={[
+                { value: "doubles", label: "Doubles" },
+                { value: "singles", label: "Singles" },
+              ]}
+            />
+          </Field>
+        )}
         {format === "round_robin" && (
           <Field label="Playoffs after the round robin">
             <Select value={playoff} onChange={(e) => setPlayoff(Number(e.target.value))}>
@@ -171,7 +176,7 @@ export function NewTournament() {
             </Select>
           </Field>
         )}
-        {mode === "doubles" && (
+        {mode === "doubles" && format !== "team_round_robin" && (
           <Field label="Teams">
             <Select
               value={formation}
@@ -189,73 +194,79 @@ export function NewTournament() {
         )}
       </div>
 
-      <section>
-        <SectionTitle
-          action={
-            mode === "doubles" && formation === "random" && selected.length >= 4 ? (
-              <Button variant="ghost" size="sm" onClick={() => setSeed((s) => s + 1)}>
-                Redraw
-              </Button>
-            ) : undefined
-          }
-        >
-          {mode === "doubles" && formation === "fixed" ? "Tap two players to pair them" : "Players"}
-        </SectionTitle>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {list.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              aria-pressed={isChosen(p.id)}
-              onClick={() => toggle(p.id)}
-              className={cx(
-                "flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-left text-sm",
-                isChosen(p.id) ? "border-primary bg-primary/10 font-semibold" : "border-line bg-surface text-muted hover:text-text",
-              )}
+      {format === "team_round_robin" ? (
+        <TeamTournamentForm name={name.trim() || defaultName()} cycles={cycles} onCreated={() => setName(defaultName())} />
+      ) : (
+        <>
+          <section>
+            <SectionTitle
+              action={
+                mode === "doubles" && formation === "random" && selected.length >= 4 ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSeed((s) => s + 1)}>
+                    Redraw
+                  </Button>
+                ) : undefined
+              }
             >
-              <span className="truncate">{p.name}</span>
-              <span className="tabular text-xs">{fmt.rating(rating(p.id))}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+              {mode === "doubles" && formation === "fixed" ? "Tap two players to pair them" : "Players"}
+            </SectionTitle>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {list.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={isChosen(p.id)}
+                  onClick={() => toggle(p.id)}
+                  className={cx(
+                    "flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-left text-sm",
+                    isChosen(p.id) ? "border-primary bg-primary/10 font-semibold" : "border-line bg-surface text-muted hover:text-text",
+                  )}
+                >
+                  <span className="truncate">{p.name}</span>
+                  <span className="tabular text-xs">{fmt.rating(rating(p.id))}</span>
+                </button>
+              ))}
+            </div>
+          </section>
 
-      {seeded.length > 0 && (
-        <section>
-          <SectionTitle>Seeds · {seeded.length} entries</SectionTitle>
-          <Card className="divide-y divide-line overflow-hidden">
-            {seeded.map((ids, i) => (
-              <div key={ids.join()} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                <span className="tabular w-6 font-bold text-muted">#{i + 1}</span>
-                <span className="flex-1">
-                  <TeamNames ids={ids} link={false} />
-                </span>
-                <span className="tabular text-muted">{fmt.rating(ids.reduce((s, id) => s + rating(id), 0) / ids.length)}</span>
-              </div>
-            ))}
-          </Card>
-          {leftover.length > 0 && (
-            <p className="mt-2 text-sm text-loss">
-              <TeamNames list ids={leftover} link={false} /> {formation === "fixed" ? "needs a partner." : "has no partner (odd number of players) and will sit out."}
-            </p>
+          {seeded.length > 0 && (
+            <section>
+              <SectionTitle>Seeds · {seeded.length} entries</SectionTitle>
+              <Card className="divide-y divide-line overflow-hidden">
+                {seeded.map((ids, i) => (
+                  <div key={ids.join()} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className="tabular w-6 font-bold text-muted">#{i + 1}</span>
+                    <span className="flex-1">
+                      <TeamNames ids={ids} link={false} />
+                    </span>
+                    <span className="tabular text-muted">{fmt.rating(ids.reduce((s, id) => s + rating(id), 0) / ids.length)}</span>
+                  </div>
+                ))}
+              </Card>
+              {leftover.length > 0 && (
+                <p className="mt-2 text-sm text-loss">
+                  <TeamNames list ids={leftover} link={false} /> {formation === "fixed" ? "needs a partner." : "has no partner (odd number of players) and will sit out."}
+                </p>
+              )}
+              <p className="mt-2 text-sm text-muted">
+                {formatName(format, cycles)}: {preview.filter((m) => !m.is_conditional).length + playoffMatchCount} matches
+                {format === "double_elim" ? " (+1 if the grand final needs a reset)" : ""}.
+              </p>
+            </section>
           )}
-          <p className="mt-2 text-sm text-muted">
-            {formatName(format, cycles)}: {preview.filter((m) => !m.is_conditional).length + playoffMatchCount} matches
-            {format === "double_elim" ? " (+1 if the grand final needs a reset)" : ""}.
-          </p>
-        </section>
+
+          <section className="space-y-4">
+            <SectionTitle>Match format</SectionTitle>
+            <FormatFields value={scoring} onChange={setScoring} />
+            <Toggle checked={rated} onChange={setRated} label="Rated" description="Tournament matches count toward Elo like any other match." />
+          </section>
+
+          <ErrorNote>{error}</ErrorNote>
+          <Button size="lg" className="w-full" disabled={busy || seeded.length < 2} onClick={create}>
+            Create tournament
+          </Button>
+        </>
       )}
-
-      <section className="space-y-4">
-        <SectionTitle>Match format</SectionTitle>
-        <FormatFields value={scoring} onChange={setScoring} />
-        <Toggle checked={rated} onChange={setRated} label="Rated" description="Tournament matches count toward Elo like any other match." />
-      </section>
-
-      <ErrorNote>{error}</ErrorNote>
-      <Button size="lg" className="w-full" disabled={busy || seeded.length < 2} onClick={create}>
-        Create tournament
-      </Button>
     </div>
   );
 }

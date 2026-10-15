@@ -11,6 +11,7 @@ import { TvIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
 import { Scoreboard, WinChanceBar, formatLabel, formatOf, useWinChance } from "@/components/match";
 import { TeamPicker, teamsFrom, type Assignment } from "@/components/team-picker";
+import { FinalResultForm, LineupPicker, isTeamTournament } from "@/components/team";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, LiveBadge, SectionTitle } from "@/components/ui";
 import { completeMatch, deleteMatch, friendlyError, setMatchPlayers, updateMatch } from "@/lib/data/actions";
 import { useOwnership } from "@/lib/data/ownership";
@@ -33,10 +34,28 @@ function EloBreakdown({ match }: { match: Match }) {
   const info = ratings.byMatch.get(match.id);
   if (!info) return null;
   const winnerExpected = info.winner === "A" ? info.expectedA : 1 - info.expectedA;
+  const names = (ids: string[]) => ids.map((id) => players.get(id)?.name ?? "?").join(" & ");
   return (
     <section>
       <SectionTitle>Rating changes</SectionTitle>
       <Card className="overflow-hidden">
+        {info.segments ? (
+          <div className="space-y-2 border-b border-line px-4 py-3 text-sm text-muted">
+            <p>Rated in two parts, one per lineup, each weighted by its share of the points:</p>
+            <ol className="space-y-1">
+              {info.segments.map((seg, i) => (
+                <li key={i}>
+                  <span className="font-semibold text-text">
+                    {i === 0 ? "Before" : "After"} the substitution ({Math.round(seg.weight * 100)}%):
+                  </span>{" "}
+                  {names(seg.teamA)} {seg.pointsA}–{seg.pointsB} {names(seg.teamB)}
+                  {seg.pointsA === seg.pointsB ? " · a draw" : ""} · {fmt.percent(seg.pointsA >= seg.pointsB ? seg.expectedA : 1 - seg.expectedA)}{" "}
+                  {seg.pointsA === seg.pointsB ? "for team A" : "chance for the side that won it"}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : (
         <p className="border-b border-line px-4 py-3 text-sm text-muted">
           The winners had a <span className="font-semibold text-text">{fmt.percent(winnerExpected)}</span> chance going in
           {config.marginOfVictory && (
@@ -50,6 +69,7 @@ function EloBreakdown({ match }: { match: Match }) {
             How this works
           </Link>
         </p>
+        )}
         <table className="w-full text-sm">
           <thead className="text-xs text-muted">
             <tr className="text-left">
@@ -114,6 +134,10 @@ function RefereePanel({ match }: { match: Match }) {
     });
 
   const inTournament = match.tournament_id !== null;
+  const { tournaments } = useData();
+  const teamMatch = isTeamTournament(match.tournament_id ? tournaments.get(match.tournament_id) : undefined);
+  const isFinal = !!match.sub_threshold;
+  const hasLineups = match.team_a.length > 0 && match.team_b.length > 0;
 
   return (
     <Card className="space-y-4 border-ball/60 p-4">
@@ -124,11 +148,22 @@ function RefereePanel({ match }: { match: Match }) {
 
       {(match.status === "scheduled" || match.status === "live") && (
         <ButtonLink href={`/ref/score/${match.id}`} size="lg" className="w-full">
-          {match.status === "live" ? "Continue scoring" : "Start scoring"}
+          {match.status === "live" ? "Continue scoring" : teamMatch && !hasLineups ? "Pick lineups" : "Start scoring"}
         </ButtonLink>
       )}
 
-      {editing || (match.status === "scheduled" && match.team_a.length > 0 && match.team_b.length > 0) ? (
+      {isFinal ? (
+        editing ? (
+          <FinalResultForm match={match} onDone={() => setEditing(false)} onCancel={() => setEditing(false)} />
+        ) : (
+          match.status === "scheduled" &&
+          hasLineups && (
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              Or enter the result
+            </Button>
+          )
+        )
+      ) : editing || (match.status === "scheduled" && hasLineups) ? (
         <div className="space-y-3">
           <p className="text-sm text-muted">{match.status === "completed" ? "Correct the result:" : "Or enter the final score:"}</p>
           <GamesInput
@@ -157,9 +192,9 @@ function RefereePanel({ match }: { match: Match }) {
             Edit result
           </Button>
         )}
-        {match.status !== "void" && match.team_a.length > 0 && match.team_b.length > 0 && (
+        {match.status !== "void" && hasLineups && (!isFinal || match.status === "scheduled") && (
           <ButtonLink href={`/matches/${match.id}?edit=players`} replace scroll={false} variant="secondary" size="sm">
-            Change players
+            {teamMatch ? "Change lineups" : "Change players"}
           </ButtonLink>
         )}
         {match.status === "completed" && (
@@ -314,6 +349,7 @@ function ChangePlayers({ match }: { match: Match }) {
 function MatchDetail({ id }: { id: string }) {
   const { matches, tournaments } = useData();
   const { canEdit } = useOwnership();
+  const router = useRouter();
   // Open state lives in the URL: the referee panel remounts on every score update,
   // and Next keeps this page alive between visits, so component state would go stale.
   const changingPlayers = useSearchParams().get("edit") === "players";
@@ -363,7 +399,21 @@ function MatchDetail({ id }: { id: string }) {
       {canEdit(match.created_by) ? (
         <>
           <RefereePanel key={`${match.id}-${match.updated_at}`} match={match} />
-          {changingPlayers && match.status !== "void" && <ChangePlayers match={match} />}
+          {changingPlayers &&
+            match.status !== "void" &&
+            (isTeamTournament(match.tournament_id ? tournaments.get(match.tournament_id) : undefined) ? (
+              (!match.sub_threshold || match.status === "scheduled") && (
+                <Card className="p-4">
+                  <LineupPicker
+                    match={match}
+                    onDone={() => router.replace(`/matches/${match.id}`, { scroll: false })}
+                    onCancel={() => router.replace(`/matches/${match.id}`, { scroll: false })}
+                  />
+                </Card>
+              )
+            ) : (
+              <ChangePlayers match={match} />
+            ))}
         </>
       ) : (
         <NotYours owner={match.created_by} kind="match" />

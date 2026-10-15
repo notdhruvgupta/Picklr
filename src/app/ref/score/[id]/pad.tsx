@@ -7,6 +7,7 @@ import { BallIcon, Delta, TeamNames } from "@/components/bits";
 import { useConfirm } from "@/components/confirm";
 import { UndoIcon } from "@/components/icons";
 import { formatLabel, formatOf } from "@/components/match";
+import { LineupPicker, SubstitutionChooser, isTeamTournament } from "@/components/team";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, Field, Input, Segmented, Spinner, cx } from "@/components/ui";
 import {
   completeMatch,
@@ -22,7 +23,7 @@ import { useOwnership } from "@/lib/data/ownership";
 import { useData } from "@/lib/data/store";
 import { previewMatch, type Team } from "@/lib/elo";
 import * as fmt from "@/lib/format";
-import { gameWins, isGameWon, other, replay, scoreCall, type RallyEvent } from "@/lib/scoring";
+import { gameWins, isGameWon, onCourt, other, periodScores, replay, scoreCall, type Lineup, type RallyEvent } from "@/lib/scoring";
 import type { Match } from "@/lib/types";
 
 function useWakeLock() {
@@ -43,7 +44,7 @@ function useWakeLock() {
   }, []);
 }
 
-function StartPanel({ match }: { match: Match }) {
+function StartPanel({ match, onChangeLineup }: { match: Match; onChangeLineup?: () => void }) {
   const { ratings, config } = useData();
   const [server, setServer] = useState<Team>("A");
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +63,15 @@ function StartPanel({ match }: { match: Match }) {
           {fmt.percent(preview.expectedA)} – {fmt.percent(1 - preview.expectedA)} · at stake about{" "}
           <Delta value={preview.ifAWins[0]} /> / <Delta value={preview.ifBWins[0]} />
         </p>
-        <Link href={`/matches/${match.id}?edit=players`} className="inline-block text-sm font-semibold text-primary hover:underline">
-          Wrong players? Change them
-        </Link>
+        {onChangeLineup ? (
+          <button type="button" onClick={onChangeLineup} className="text-sm font-semibold text-primary hover:underline">
+            Change lineups
+          </button>
+        ) : (
+          <Link href={`/matches/${match.id}?edit=players`} className="inline-block text-sm font-semibold text-primary hover:underline">
+            Wrong players? Change them
+          </Link>
+        )}
       </div>
       <Field label="Who serves first?">
         <Segmented
@@ -151,7 +158,7 @@ function CorrectionForm({
 }
 
 function RallyButton({
-  match,
+  ids,
   team,
   score,
   serving,
@@ -161,7 +168,7 @@ function RallyButton({
   disabled,
   point,
 }: {
-  match: Match;
+  ids: string[];
   team: Team;
   score: number;
   serving: boolean;
@@ -171,7 +178,6 @@ function RallyButton({
   disabled: boolean;
   point: string | null;
 }) {
-  const ids = team === "A" ? match.team_a : match.team_b;
   const { players } = useData();
   return (
     <button
@@ -206,6 +212,13 @@ function RallyButton({
       </span>
     </button>
   );
+}
+
+function WinnerName({ match, team }: { match: Match; team: Team }) {
+  const { entries } = useData();
+  const entryId = team === "A" ? match.entry_a_id : match.entry_b_id;
+  const name = entryId ? entries.get(entryId)?.name : null;
+  return name ? <>{name}</> : <TeamNames ids={team === "A" ? match.team_a : match.team_b} link={false} />;
 }
 
 function Pad({ match }: { match: Match }) {
@@ -249,7 +262,18 @@ function Pad({ match }: { match: Match }) {
     };
   }, [match.id, match.rally_count, reloadKey]);
 
-  const state = useMemo(() => (events ? replay(format, events, match.first_server) : null), [events, format, match.first_server]);
+  // Team final: replay from the starting lineup (kept in the live state; afterwards the sides list everyone).
+  const startKey = JSON.stringify(
+    match.sub_threshold
+      ? (match.live_state?.periods?.[0]?.lineup ??
+          (match.segments?.[0] ? { A: match.segments[0].teamA, B: match.segments[0].teamB } : { A: match.team_a, B: match.team_b }))
+      : null,
+  );
+  const startLineup = useMemo<Lineup | undefined>(() => JSON.parse(startKey) ?? undefined, [startKey]);
+  const state = useMemo(
+    () => (events ? replay(format, events, match.first_server, startLineup) : null),
+    [events, format, match.first_server, startLineup],
+  );
 
   const enqueue = (write: () => Promise<void>) => {
     pending.current++;
@@ -267,7 +291,7 @@ function Pad({ match }: { match: Match }) {
   const push = (event: RallyEvent) => {
     if (!events) return;
     const next = [...events, event];
-    const nextState = replay(format, next, match.first_server);
+    const nextState = replay(format, next, match.first_server, startLineup);
     localCount.current = next.length;
     setEvents(next);
     setError(null);
@@ -282,7 +306,7 @@ function Pad({ match }: { match: Match }) {
     localCount.current = next.length;
     setEvents(next);
     setError(null);
-    enqueue(() => undoRally(match.id, seq, replay(format, next, match.first_server)));
+    enqueue(() => undoRally(match.id, seq, replay(format, next, match.first_server, startLineup)));
   };
 
   if (!events || !state) {
@@ -314,7 +338,7 @@ function Pad({ match }: { match: Match }) {
         <Card className="space-y-4 p-5 text-center">
           <p className="text-sm font-semibold text-muted">{done ? "Result saved" : "Game, set, match"}</p>
           <p className="text-2xl font-bold">
-            <TeamNames ids={state.winner === "A" ? match.team_a : match.team_b} link={false} /> win
+            <WinnerName match={match} team={state.winner} /> win
           </p>
           <p className="tabular text-xl font-semibold">{fmt.gamesScore(state.games)}</p>
           {info && (
@@ -336,7 +360,11 @@ function Pad({ match }: { match: Match }) {
                   setError(null);
                   try {
                     await chain.current;
-                    await completeMatch(match.id, state.games);
+                    // Team final: rate each lineup's part of the game separately.
+                    const segments = state.periods
+                      ? periodScores(state.periods, state.games[0]).map((p) => ({ teamA: p.lineup.A, teamB: p.lineup.B, pointsA: p.a, pointsB: p.b }))
+                      : undefined;
+                    await completeMatch(match.id, state.games, undefined, segments);
                   } catch (err) {
                     setError(friendlyError(err));
                   } finally {
@@ -402,18 +430,27 @@ function Pad({ match }: { match: Match }) {
         )}
       </div>
 
+      {state.pendingSub && (
+        <SubstitutionChooser
+          match={match}
+          court={onCourt(state)!}
+          leader={state.pendingSub}
+          onConfirm={(lineup) => push({ kind: "substitution", lineup })}
+        />
+      )}
+
       <div className="flex flex-col gap-3">
         {(["A", "B"] as const).map((team) => (
           <RallyButton
             key={team}
-            match={match}
+            ids={onCourt(state)?.[team] ?? (team === "A" ? match.team_a : match.team_b)}
             team={team}
             score={team === "A" ? state.current.a : state.current.b}
             serving={state.servingTeam === team}
             serverNumber={state.serverNumber}
             showServer={doublesSideout}
             onPress={() => push({ kind: "rally", winner: team })}
-            disabled={correcting}
+            disabled={correcting || !!state.pendingSub}
             point={pointLabel(team)}
           />
         ))}
@@ -478,9 +515,19 @@ function Pad({ match }: { match: Match }) {
   );
 }
 
+/** Team tournaments: lineups are picked (or changed) before the match starts. */
+function ScheduledTeamMatch({ match }: { match: Match }) {
+  const [editing, setEditing] = useState(false);
+  const needsLineup = match.team_a.length === 0 || match.team_b.length === 0;
+  if (needsLineup || editing) {
+    return <LineupPicker match={match} onDone={() => setEditing(false)} onCancel={needsLineup ? undefined : () => setEditing(false)} />;
+  }
+  return <StartPanel match={match} onChangeLineup={() => setEditing(true)} />;
+}
+
 export function ScoringPad() {
   const { id } = useParams<{ id: string }>();
-  const { matches } = useData();
+  const { matches, tournaments } = useData();
   const { canEdit, ownerName } = useOwnership();
   const match = matches.get(id);
 
@@ -495,11 +542,13 @@ export function ScoringPad() {
       </Empty>
     );
   }
-  if (match.team_a.length === 0 || match.team_b.length === 0) {
+  const teamMatch =
+    isTeamTournament(match.tournament_id ? tournaments.get(match.tournament_id) : undefined) && !!match.entry_a_id && !!match.entry_b_id;
+  if (!teamMatch && (match.team_a.length === 0 || match.team_b.length === 0)) {
     return <Empty title="Waiting for players">This bracket match fills in when the earlier rounds finish.</Empty>;
   }
   if (match.status === "void") return <Empty title="This match was voided" />;
-  if (match.status === "scheduled") return <StartPanel match={match} />;
+  if (match.status === "scheduled") return teamMatch ? <ScheduledTeamMatch match={match} /> : <StartPanel match={match} />;
   if (match.status === "completed" && match.rally_count === 0) {
     return (
       <Empty title="Result already recorded" action={<ButtonLink href={`/matches/${match.id}`}>View match</ButtonLink>}>

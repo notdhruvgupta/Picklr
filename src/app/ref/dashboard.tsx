@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import type { ComponentType, SVGProps } from "react";
-import { TeamNames } from "@/components/bits";
 import { ChevronRight, ListIcon, PlusIcon, StarIcon, TrophyIcon, UsersIcon } from "@/components/icons";
-import { formatLabel } from "@/components/match";
+import { MatchSide, formatLabel } from "@/components/match";
 import { ButtonLink, Card, LiveBadge, PageTitle, SectionTitle, cx } from "@/components/ui";
 import { useOwnership } from "@/lib/data/ownership";
 import { liveMatches, upcomingMatches } from "@/lib/data/selectors";
@@ -40,7 +39,7 @@ function MatchLine({ match, index }: { match: Match; index?: number }) {
       {live ? <LiveBadge /> : index !== undefined && <span className="tabular w-5 text-sm font-bold text-muted">{index + 1}</span>}
       <div className="min-w-0 flex-1 text-sm">
         <div className="truncate">
-          <TeamNames ids={match.team_a} link={false} /> <span className="text-muted">vs</span> <TeamNames ids={match.team_b} link={false} />
+          <MatchSide match={match} team="A" /> <span className="text-muted">vs</span> <MatchSide match={match} team="B" />
         </div>
         <div className="text-xs text-muted">
           {live && `${match.live_state ? `${match.live_state.current.a}–${match.live_state.current.b}` : "0–0"} · `}
@@ -51,7 +50,7 @@ function MatchLine({ match, index }: { match: Match; index?: number }) {
       {mine ? (
         <>
           <ButtonLink href={`/ref/score/${match.id}`} size="sm" variant={live ? "primary" : "secondary"}>
-            {live ? "Score" : "Start"}
+            {live ? "Score" : match.team_a.length === 0 ? "Lineups" : "Start"}
           </ButtonLink>
           {!live && (
             <ButtonLink href={`/matches/${match.id}`} size="sm" variant="ghost">

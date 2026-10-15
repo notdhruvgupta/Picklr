@@ -153,3 +153,57 @@ describe("leaderboard", () => {
     expect(rows.find((r) => r.playerId === "e")).toBeUndefined();
   });
 });
+
+describe("team final rated in segments", () => {
+  // Team A: Gaurav plays the whole game, Tarang the first part, Yatharth comes on at 10-7.
+  const starting = ["g", "t", "y", "b1", "b2", "b3"].map((id) => ({ id, singles: 1500, doubles: 1500 }));
+  const final = (pointsA2: number, pointsB2: number): EloMatch => ({
+    id: "final",
+    mode: "doubles",
+    playedAt: "2026-10-16T10:00:00Z",
+    teamA: ["g", "t", "y"],
+    teamB: ["b1", "b2", "b3"],
+    games: [{ a: 10 + pointsA2, b: 7 + pointsB2 }],
+    pointsToWin: 21,
+    segments: [
+      { teamA: ["g", "t"], teamB: ["b1", "b2"], pointsA: 10, pointsB: 7 },
+      { teamA: ["g", "y"], teamB: ["b2", "b3"], pointsA: pointsA2, pointsB: pointsB2 },
+    ],
+  });
+  const delta = (r: ReturnType<typeof computeRatings>, id: string) => r.byMatch.get("final")!.changes.find((c) => c.playerId === id)!.delta;
+
+  it("weights each segment by its share of points", () => {
+    const r = computeRatings(starting, [final(11, 0)], fixed);
+    const segs = r.byMatch.get("final")!.segments!;
+    expect(segs.map((s) => s.weight)).toEqual([17 / 28, 11 / 28]);
+    // Equal ratings: each segment's expected score is 0.5.
+    expect(segs.every((s) => s.expectedA === 0.5)).toBe(true);
+  });
+
+  it("rates the full-game player on both segments and the others on their own", () => {
+    const r = computeRatings(starting, [final(11, 0)], fixed);
+    expect(delta(r, "g")).toBeCloseTo(delta(r, "t") + delta(r, "y"), 10);
+    expect(delta(r, "t")).toBeGreaterThan(0);
+    expect(delta(r, "y")).toBeGreaterThan(0);
+    // b2 played both segments, b1 and b3 one each.
+    expect(delta(r, "b2")).toBeCloseTo(delta(r, "b1") + delta(r, "b3"), 10);
+  });
+
+  it("stays zero-sum and counts the final once for everyone who played", () => {
+    const r = computeRatings(starting, [final(11, 9)], fixed);
+    const total = [...r.players.values()].reduce((s, p) => s + p.doubles.rating, 0);
+    expect(total).toBeCloseTo(6 * 1500, 8);
+    for (const id of ["g", "t", "y"]) expect(r.players.get(id)!.doubles).toMatchObject({ matches: 1, wins: 1 });
+    for (const id of ["b1", "b2", "b3"]) expect(r.players.get(id)!.doubles).toMatchObject({ matches: 1, losses: 1 });
+  });
+
+  it("treats a tied segment as a draw", () => {
+    // 10-7 then 12-12 → final 22-19 to A; second segment drawn.
+    const r = computeRatings(starting, [final(12, 12)], fixed);
+    const seg2 = r.byMatch.get("final")!.segments![1];
+    expect(seg2.pointsA).toBe(seg2.pointsB);
+    // Equal ratings and a draw: Yatharth (only in the drawn segment) doesn't move.
+    expect(delta(r, "y")).toBeCloseTo(0, 10);
+    expect(delta(r, "b3")).toBeCloseTo(0, 10);
+  });
+});

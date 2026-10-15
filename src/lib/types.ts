@@ -1,4 +1,4 @@
-import type { EloConfig, GameResult, Mode, Team } from "@/lib/elo";
+import type { EloConfig, EloSegment, GameResult, Mode, Team } from "@/lib/elo";
 import type { LiveState, ScoringSystem } from "@/lib/scoring";
 
 export type MatchStatus = "scheduled" | "live" | "completed" | "void";
@@ -47,13 +47,17 @@ export interface Match {
   completed_at: string | null;
   played_at: string | null;
   notes: string | null;
+  /** Team-tournament final: substitution when the first team reaches this score. */
+  sub_threshold: number | null;
+  /** Team-tournament final: who was on court and what they scored, for rating. */
+  segments: EloSegment[] | null;
   /** Referee who runs this match (null for legacy rows: any referee may edit). */
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type TournamentFormat = "round_robin" | "single_elim" | "double_elim";
+export type TournamentFormat = "round_robin" | "single_elim" | "double_elim" | "team_round_robin";
 export type TeamFormationChoice = "fixed" | "balanced" | "snake" | "random";
 
 export interface Tournament {
@@ -69,6 +73,11 @@ export interface Tournament {
   playoff_size: number;
   /** Round robin only: times each pair meets (1 single, 2 double, 3 triple). */
   round_robin_cycles: number;
+  /** Team tournaments: the final's format and substitution threshold. */
+  final_scoring: ScoringSystem | null;
+  final_points_to_win: number | null;
+  final_win_by: number | null;
+  sub_threshold: number | null;
   is_rated: boolean;
   status: "active" | "completed" | "cancelled";
   winner_entry_id: string | null;

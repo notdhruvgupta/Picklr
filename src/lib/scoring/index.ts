@@ -20,6 +20,22 @@ export interface MatchFormat {
   winBy: number;
   /** 1, 3 or 5. */
   bestOf: number;
+  /**
+   * Team-tournament final: when the first team reaches this score, both teams
+   * make their one substitution (the team that got there chooses who goes off).
+   */
+  subThreshold?: number | null;
+}
+
+export interface Lineup {
+  A: string[];
+  B: string[];
+}
+
+/** Who was on court from a given score onwards. */
+export interface LineupPeriod {
+  lineup: Lineup;
+  from: GameResult;
 }
 
 export const DEFAULT_FORMATS: Record<ScoringSystem, Omit<MatchFormat, "mode">> = {
@@ -30,9 +46,11 @@ export const DEFAULT_FORMATS: Record<ScoringSystem, Omit<MatchFormat, "mode">> =
 export type RallyEvent =
   | { kind: "rally"; winner: Team }
   /** Referee correction: force the current game's score and serve. */
-  | { kind: "correction"; a: number; b: number; servingTeam: Team; serverNumber: 1 | 2 };
+  | { kind: "correction"; a: number; b: number; servingTeam: Team; serverNumber: 1 | 2 }
+  /** Team final: the new on-court lineups once the substitution threshold is reached. */
+  | { kind: "substitution"; lineup: Lineup };
 
-export type Notice = "switch-ends" | "game-over" | "match-over" | null;
+export type Notice = "switch-ends" | "game-over" | "match-over" | "substitution" | null;
 
 export interface LiveState {
   /** Completed games. */
@@ -46,6 +64,10 @@ export interface LiveState {
   rallies: number;
   /** Something the referee should be told about after the last event. */
   notice: Notice;
+  /** Team finals only: on-court lineups, one per period between substitutions. */
+  periods?: LineupPeriod[];
+  /** Team finals: the team that reached the threshold first, while the substitution is awaited. */
+  pendingSub?: Team | null;
 }
 
 export const other = (t: Team): Team => (t === "A" ? "B" : "A");
@@ -65,7 +87,7 @@ function startingServerNumber(format: MatchFormat): 1 | 2 {
   return format.scoring === "sideout" && format.mode === "doubles" ? 2 : 1;
 }
 
-export function initialState(format: MatchFormat, firstServer: Team = "A"): LiveState {
+export function initialState(format: MatchFormat, firstServer: Team = "A", lineup?: Lineup): LiveState {
   return {
     games: [],
     current: { a: 0, b: 0 },
@@ -75,7 +97,31 @@ export function initialState(format: MatchFormat, firstServer: Team = "A"): Live
     winner: null,
     rallies: 0,
     notice: null,
+    ...(lineup ? { periods: [{ lineup, from: { a: 0, b: 0 } }], pendingSub: null } : {}),
   };
+}
+
+/** The lineup currently on court in a team final, or null for ordinary matches. */
+export function onCourt(state: LiveState): Lineup | null {
+  return state.periods?.length ? state.periods[state.periods.length - 1].lineup : null;
+}
+
+/** Points each lineup period produced, ending at `final` (the final score of the game). */
+export function periodScores(periods: LineupPeriod[], final: GameResult): { lineup: Lineup; a: number; b: number }[] {
+  return periods.map((p, i) => {
+    const end = periods[i + 1]?.from ?? final;
+    return { lineup: p.lineup, a: end.a - p.from.a, b: end.b - p.from.b };
+  });
+}
+
+/** Team final: once a team reaches the threshold, wait for the one substitution (once per game). */
+function checkSubstitution(state: LiveState, format: MatchFormat): LiveState {
+  const threshold = format.subThreshold;
+  if (!threshold || !state.periods || state.periods.length > 1 || state.winner) return state;
+  const { a, b } = state.current;
+  const reached: Team | null = a >= threshold || b >= threshold ? (a > b ? "A" : b > a ? "B" : state.servingTeam) : null;
+  if (reached === (state.pendingSub ?? null)) return state;
+  return { ...state, pendingSub: reached, notice: reached ? "substitution" : state.notice };
 }
 
 export function gameWins(games: GameResult[]): Record<Team, number> {
@@ -101,8 +147,22 @@ function addPoint(score: GameResult, team: Team): GameResult {
 export function applyEvent(state: LiveState, event: RallyEvent, format: MatchFormat): LiveState {
   if (state.winner) return state;
 
+  if (event.kind === "substitution") {
+    if (!state.pendingSub || !state.periods) return state;
+    return {
+      ...state,
+      periods: [...state.periods, { lineup: event.lineup, from: { ...state.current } }],
+      pendingSub: null,
+      rallies: state.rallies + 1,
+      notice: null,
+    };
+  }
+
+  // Play stops at the threshold until the substitution is made (score corrections still apply).
+  if (state.pendingSub && event.kind === "rally") return state;
+
   if (event.kind === "correction") {
-    return finishGameIfWon(
+    const corrected = finishGameIfWon(
       {
         ...state,
         current: { a: event.a, b: event.b },
@@ -113,6 +173,7 @@ export function applyEvent(state: LiveState, event: RallyEvent, format: MatchFor
       },
       format,
     );
+    return checkSubstitution(corrected, format);
   }
 
   const next: LiveState = { ...state, rallies: state.rallies + 1, notice: null };
@@ -138,7 +199,7 @@ export function applyEvent(state: LiveState, event: RallyEvent, format: MatchFor
     next.notice = "switch-ends";
   }
 
-  return finishGameIfWon(next, format);
+  return checkSubstitution(finishGameIfWon(next, format), format);
 }
 
 function finishGameIfWon(state: LiveState, format: MatchFormat): LiveState {
@@ -163,8 +224,8 @@ function finishGameIfWon(state: LiveState, format: MatchFormat): LiveState {
   };
 }
 
-export function replay(format: MatchFormat, events: RallyEvent[], firstServer: Team = "A"): LiveState {
-  return events.reduce((s, e) => applyEvent(s, e, format), initialState(format, firstServer));
+export function replay(format: MatchFormat, events: RallyEvent[], firstServer: Team = "A", lineup?: Lineup): LiveState {
+  return events.reduce((s, e) => applyEvent(s, e, format), initialState(format, firstServer, lineup));
 }
 
 /**

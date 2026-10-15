@@ -5,6 +5,7 @@
  */
 
 import { doubleElimination, roundRobin, singleElimination, type BracketMatch, type SlotSource } from "@/lib/brackets";
+import { teamRoundRobinMatches } from "@/lib/team-tournament";
 import type { Mode, Team } from "@/lib/elo";
 import type { ScoringSystem } from "@/lib/scoring";
 import type { TournamentFormat } from "@/lib/types";
@@ -163,6 +164,8 @@ export function buildTournamentMatches(t: TournamentSpec, entries: EntrySpec[], 
       return eliminationMatches(t, entries, newId);
     case "double_elim":
       return eliminationMatches(t, entries, newId, { double: true });
+    case "team_round_robin":
+      return teamRoundRobinMatches(t, entries, newId);
   }
 }
 
@@ -183,5 +186,6 @@ export function playoffMatches(
 
 export function formatName(format: TournamentFormat, cycles = 1): string {
   if (format === "round_robin") return cycles === 3 ? "Triple round robin" : cycles === 2 ? "Double round robin" : "Round robin";
+  if (format === "team_round_robin") return `Team tournament · ${cycles === 3 ? "triple" : "double"} round robin`;
   return { single_elim: "Single elimination", double_elim: "Double elimination" }[format];
 }

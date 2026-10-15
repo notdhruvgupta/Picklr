@@ -12,7 +12,7 @@ Live scores, Elo ratings, sessions and tournaments for a small pickleball group.
 | **Elo ratings** | Separate singles and doubles ratings, updated after every match. Margin of victory counts, and new players move faster (provisional K). |
 | **Live scoring** | Tap who won each rally. Side-out (with server 1/2 and "0-0-2") or rally scoring, games to 7/9/11/15/21, win by 1 or 2, single game or best of 3. Includes undo, score correction, game/match point, and "switch ends". |
 | **Sessions** | Check in who showed up. The app suggests each next match: fair rotation, fresh partners, closest odds. Shows the day's standings and a shareable recap. |
-| **Tournaments** | Single, double or triple round robin (optionally followed by a top-2/top-4 playoff), single elimination, or double elimination with a grand-final reset. Seeded by Elo, with byes going to the top seeds. Doubles teams can be balanced, snake-drafted, random, or fixed. |
+| **Tournaments** | Single, double or triple round robin (optionally followed by a top-2/top-4 playoff), single elimination, double elimination with a grand-final reset, or a team tournament (below). Seeded by Elo, with byes going to the top seeds. Doubles teams can be balanced, snake-drafted, random, or fixed. |
 | **Fair teams** | Pick any four players and see all three possible splits with win chances. |
 | **Stats** | Rating charts, partners, toughest opponents, head-to-head, streaks, records, biggest upsets. |
 | **Admin** | Edit results, archive (hide and stop rating; restorable) or permanently delete matches, cancel tournaments, rated/unrated matches, starting ratings, rating settings, change log, CSV export. |
@@ -85,6 +85,16 @@ Checks: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 **"Could not find the table 'public.…' in the schema cache"** on the live site means step 1 hasn't been run against the project in Vercel's `NEXT_PUBLIC_SUPABASE_URL`. Run `npx supabase db push --include-seed` while linked to that project, then refresh. No redeploy is needed.
 
 Free Supabase projects pause after about a week with no activity. Weekly play keeps the project active; if it does pause, resume it from the dashboard.
+
+## Team tournaments
+
+A team format for 6 or more players ("Triple Team Tournament"):
+
+- **Teams:** players are split into teams of 3. When the number of players doesn't divide by 3, some teams have 4. Teams can be balanced by Elo, snake-drafted, drawn at random, or picked by hand.
+- **Group stage:** teams play a **double or triple round robin** of ordinary doubles matches. Before each match, both captains tell the referee which 2 players they're fielding.
+- **Fair share:** every player plays between a minimum and maximum share of their team's matches. For example, in a double round robin with 3 teams of 3, each team plays 4 matches and its players play 3, 3 and 2. The lineup picker only offers pairs that keep the remaining matches fillable fairly, and the database enforces the same rule. The tournament page shows each player's matches played and remaining.
+- **Final:** the top two teams play a final (format chosen by the referee, e.g. rally to 21). When the first team reaches **10**, both teams bring on their bench player. The team that got there first chooses who goes off on *both* sides; a 4-player team picks which of its two bench players comes on. The final doesn't count toward anyone's cap.
+- **Rating the final:** the final is rated in two parts, one per lineup, each weighted by its share of the points. The player who stayed on court throughout is rated on both parts; the others on their own part. A tied part counts as a draw.
 
 ## Multiple referees
 
