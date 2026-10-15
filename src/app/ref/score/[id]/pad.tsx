@@ -62,6 +62,9 @@ function StartPanel({ match }: { match: Match }) {
           {fmt.percent(preview.expectedA)} – {fmt.percent(1 - preview.expectedA)} · at stake about{" "}
           <Delta value={preview.ifAWins[0]} /> / <Delta value={preview.ifBWins[0]} />
         </p>
+        <Link href={`/matches/${match.id}?edit=players`} className="inline-block text-sm font-semibold text-primary hover:underline">
+          Wrong players? Change them
+        </Link>
       </div>
       <Field label="Who serves first?">
         <Segmented

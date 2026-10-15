@@ -52,6 +52,17 @@ export function NewMatchForm() {
     setAssignment({});
   };
 
+  // Next keeps this page alive (hidden) after navigating away, so state would
+  // survive to the next visit. Start each new match from a clean form; the
+  // match type and format are kept because they rarely change between matches.
+  const resetAfterCreate = () => {
+    setAssignment({});
+    setQuick(false);
+    setGames([]);
+    setError(null);
+    setBusy(false);
+  };
+
   // "Start scoring" also creates a scheduled match; the scoring pad asks who serves first, then starts it.
   const create = async (then: "score" | "queue") => {
     setBusy(true);
@@ -67,6 +78,7 @@ export function NewMatchForm() {
         sessionId: openSession?.id ?? null,
         queuePosition: then === "queue" ? queueTail + 1 : null,
       });
+      resetAfterCreate();
       router.push(then === "score" ? `/ref/score/${match.id}` : "/ref");
     } catch (err) {
       setError(friendlyError(err));
@@ -86,6 +98,7 @@ export function NewMatchForm() {
       const match = await createMatch({ mode, format: matchFormat, teamA, teamB, isRated: rated, sessionId: openSession?.id ?? null });
       createdId = match.id;
       await completeMatch(match.id, filled);
+      resetAfterCreate();
       router.push(`/matches/${match.id}`);
     } catch (err) {
       // Don't leave a half-created match behind.
@@ -182,10 +195,12 @@ export function NewMatchForm() {
 
       <ErrorNote>{error}</ErrorNote>
 
-      <div className="sticky bottom-20 z-10 flex flex-col gap-2 rounded-2xl border border-line bg-surface/95 p-3 shadow-card backdrop-blur sm:flex-row md:bottom-4">
+      {/* Stacked on phones, one row from sm up. flex-1 only applies in the row: in a column it would
+          override the buttons' height and squash them. The main action is taller below lg. */}
+      <div className="sticky bottom-20 z-10 flex flex-col gap-2 rounded-2xl border border-line bg-surface/95 p-3 shadow-card backdrop-blur sm:flex-row sm:items-center md:bottom-4">
         {quick ? (
           <>
-            <Button size="lg" className="flex-1" disabled={!ready || busy} onClick={saveResult}>
+            <Button size="lg" className="h-16 text-lg sm:flex-1 lg:h-12 lg:text-base" disabled={!ready || busy} onClick={saveResult}>
               Save result
             </Button>
             <Button variant="ghost" size="lg" onClick={() => setQuick(false)}>
@@ -194,7 +209,7 @@ export function NewMatchForm() {
           </>
         ) : (
           <>
-            <Button size="lg" className="flex-1" disabled={!ready || busy} onClick={() => create("score")}>
+            <Button size="lg" className="h-16 text-lg sm:flex-1 lg:h-12 lg:text-base" disabled={!ready || busy} onClick={() => create("score")}>
               Start scoring
             </Button>
             <Button variant="secondary" size="lg" disabled={!ready || busy} onClick={() => create("queue")}>
