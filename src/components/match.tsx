@@ -5,13 +5,39 @@ import type { Team } from "@/lib/elo";
 import { useData } from "@/lib/data/store";
 import { matchTime } from "@/lib/data/selectors";
 import * as fmt from "@/lib/format";
-import { gameWins, initialState, scoreCall, type LiveState, type MatchFormat } from "@/lib/scoring";
+import { gameWins, initialState, onCourt, scoreCall, type LiveState, type MatchFormat } from "@/lib/scoring";
 import type { Match } from "@/lib/types";
 import { BallIcon, Delta, TeamNames } from "./bits";
 import { Badge, Card, LiveBadge, cx } from "./ui";
 
-export function formatOf(m: Pick<Match, "mode" | "scoring" | "points_to_win" | "win_by" | "best_of">): MatchFormat {
-  return { mode: m.mode, scoring: m.scoring, pointsToWin: m.points_to_win, winBy: m.win_by, bestOf: m.best_of };
+export function formatOf(m: Pick<Match, "mode" | "scoring" | "points_to_win" | "win_by" | "best_of"> & { sub_threshold?: number | null }): MatchFormat {
+  return {
+    mode: m.mode,
+    scoring: m.scoring,
+    pointsToWin: m.points_to_win,
+    winBy: m.win_by,
+    bestOf: m.best_of,
+    ...(m.sub_threshold ? { subThreshold: m.sub_threshold } : {}),
+  };
+}
+
+/**
+ * One side of a match: its players, or the team-tournament team name while the
+ * lineup hasn't been picked yet.
+ */
+export function MatchSide({ match, team, link = false, className }: { match: Match; team: Team; link?: boolean; className?: string }) {
+  const { entries } = useData();
+  const ids = team === "A" ? match.team_a : match.team_b;
+  const entryId = team === "A" ? match.entry_a_id : match.entry_b_id;
+  const entry = entryId ? entries.get(entryId) : undefined;
+  if (ids.length === 0 && entry?.name) {
+    return (
+      <span className={className}>
+        {entry.name} <span className="text-xs text-muted">(lineup TBD)</span>
+      </span>
+    );
+  }
+  return <TeamNames ids={ids} link={link} className={className} />;
 }
 
 export function liveStateOf(m: Match): LiveState {
@@ -115,7 +141,9 @@ function ScoreSide({
   size: "md" | "xl";
   links: boolean;
 }) {
-  const ids = team === "A" ? match.team_a : match.team_b;
+  // Live team final: show who is on court right now (afterwards the side lists everyone who played).
+  const courtNow = match.status === "live" ? onCourt(state) : null;
+  const ids = courtNow?.[team] ?? (team === "A" ? match.team_a : match.team_b);
   const serving = match.status === "live" && !state.winner && state.servingTeam === team;
   const score = team === "A" ? state.current.a : state.current.b;
   const games = gameWins(state.games)[team];
@@ -153,6 +181,39 @@ function ScoreSide({
   );
 }
 
+/** Team final: who is on the bench, or who came on at the substitution. */
+function SubstitutionNote({ match, state, size }: { match: Match; state: LiveState; size: "md" | "xl" }) {
+  const { entries, players } = useData();
+  const name = (id: string) => players.get(id)?.name ?? "?";
+  const periods = state.periods ?? [];
+  const text = size === "xl" ? "text-2xl" : "text-xs";
+  if (periods.length > 1) {
+    const [first, second] = periods;
+    const swaps = (["A", "B"] as const)
+      .map((t) => {
+        const out = first.lineup[t].filter((id) => !second.lineup[t].includes(id));
+        const inn = second.lineup[t].filter((id) => !first.lineup[t].includes(id));
+        return out.length ? `${out.map(name).join(", ")} → ${inn.map(name).join(", ")}` : null;
+      })
+      .filter(Boolean);
+    return (
+      <p className={cx("text-center text-muted", text)}>
+        Substitution at {second.from.a}–{second.from.b}: {swaps.join(" · ")}
+      </p>
+    );
+  }
+  const bench = (["A", "B"] as const).map((t) => {
+    const entryId = t === "A" ? match.entry_a_id : match.entry_b_id;
+    const roster = entryId ? (entries.get(entryId)?.player_ids ?? []) : [];
+    return roster.filter((id) => !periods[0]?.lineup[t].includes(id)).map(name).join(", ");
+  });
+  return (
+    <p className={cx("text-center text-muted", text)}>
+      {state.pendingSub ? "Substitution now" : `Substitution when a team reaches ${match.sub_threshold}`} · bench: {bench[0] || "–"} | {bench[1] || "–"}
+    </p>
+  );
+}
+
 /** Live (or finished) scoreboard for a match. */
 export function Scoreboard({ match, size = "md", links = true }: { match: Match; size?: "md" | "xl"; links?: boolean }) {
   const state = liveStateOf(match);
@@ -162,6 +223,7 @@ export function Scoreboard({ match, size = "md", links = true }: { match: Match;
     <div className={cx("space-y-2", size === "xl" && "space-y-6")}>
       <ScoreSide match={match} team="A" state={state} size={size} links={links} />
       <ScoreSide match={match} team="B" state={state} size={size} links={links} />
+      {match.sub_threshold && state.periods && <SubstitutionNote match={match} state={state} size={size} />}
       {match.status === "live" && !state.winner && (
         <p className={cx("text-center text-muted", size === "xl" ? "text-3xl" : "text-sm")}>
           Score call <span className="tabular font-bold text-text">{scoreCall(state, format)}</span>
@@ -213,7 +275,7 @@ export function UpcomingRow({ match, index }: { match: Match; index?: number }) 
       {index !== undefined && <span className="tabular w-5 text-sm font-bold text-muted">{index + 1}</span>}
       <div className="min-w-0 flex-1 text-sm">
         <div className="truncate">
-          <TeamNames ids={match.team_a} link={false} /> <span className="text-muted">vs</span> <TeamNames ids={match.team_b} link={false} />
+          <MatchSide match={match} team="A" /> <span className="text-muted">vs</span> <MatchSide match={match} team="B" />
         </div>
         <div className="text-xs text-muted">{match.bracket_label ?? formatLabel(match)}</div>
       </div>

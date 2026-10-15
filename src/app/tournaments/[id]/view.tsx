@@ -8,13 +8,16 @@ import { useConfirm } from "@/components/confirm";
 import { HandOver, NotYours, RunBy } from "@/components/ownership";
 import { TrophyIcon } from "@/components/icons";
 import { WhenReady } from "@/components/loading";
-import { MatchRow, UpcomingRow, formatLabel } from "@/components/match";
+import { LiveMatchCard, MatchRow, UpcomingRow, formatLabel } from "@/components/match";
+import { TeamCaps, isTeamTournament } from "@/components/team";
 import { Badge, Button, ButtonLink, Card, Empty, ErrorNote, PageTitle, SectionTitle } from "@/components/ui";
 import { standings, type Standing } from "@/lib/brackets";
 import { friendlyError } from "@/lib/data/actions";
 import { useOwnership } from "@/lib/data/ownership";
+import { sidesKnown } from "@/lib/data/selectors";
 import { useData } from "@/lib/data/store";
 import { check, supabase } from "@/lib/supabase";
+import { teamFinalMatch } from "@/lib/team-tournament";
 import { formatName, playoffMatches } from "@/lib/tournament";
 import type { Match, Tournament, TournamentEntry } from "@/lib/types";
 
@@ -39,8 +42,19 @@ function StandingsTable({ rows, entries, highlight }: { rows: Standing[]; entrie
               <tr key={r.entryId} className={i < highlight ? "bg-primary/5" : undefined}>
                 <td className="tabular px-4 py-2.5 font-bold text-muted">{i + 1}</td>
                 <td className="px-2 py-2.5 font-medium">
-                  <TeamNames ids={e?.player_ids ?? []} />
-                  <span className="ml-1.5 text-xs text-muted">({e?.seed})</span>
+                  {e?.name ? (
+                    <>
+                      <span className="font-semibold">{e.name}</span>
+                      <span className="block text-xs font-normal text-muted">
+                        <TeamNames list ids={e.player_ids} />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <TeamNames ids={e?.player_ids ?? []} />
+                      <span className="ml-1.5 text-xs text-muted">({e?.seed})</span>
+                    </>
+                  )}
                 </td>
                 <td className="tabular px-2 py-2.5 text-right">
                   {r.wins}–{r.losses}
@@ -82,6 +96,7 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
   const playoffs = list.filter((m) => m.stage === "playoff");
   const groupDone = group.length > 0 && group.every((m) => m.status === "completed");
   const isRR = t.format === "round_robin";
+  const isTeam = isTeamTournament(t);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -109,6 +124,21 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
         Math.max(0, ...list.map((m) => m.queue_position ?? 0)),
       );
       check(await supabase.rpc("insert_tournament_matches", { p_matches: rows }));
+    });
+
+  // Team tournament: the top two teams (first place as team A) play the final.
+  const startFinal = () =>
+    run(async () => {
+      if (table.length < 2) throw new Error("The final needs two teams.");
+      const row = teamFinalMatch(
+        { id: t.id, format: t.format, mode: t.mode, scoring: t.scoring, pointsToWin: t.points_to_win, winBy: t.win_by, bestOf: t.best_of, isRated: t.is_rated },
+        table[0].entryId,
+        table[1].entryId,
+        { scoring: t.final_scoring ?? "rally", pointsToWin: t.final_points_to_win ?? 21, winBy: t.final_win_by ?? 2, subThreshold: t.sub_threshold ?? 10 },
+        crypto.randomUUID(),
+        Math.max(0, ...list.map((m) => m.queue_position ?? 0)) + 1,
+      );
+      check(await supabase.rpc("insert_tournament_matches", { p_matches: [row] }));
     });
 
   const finish = () =>
@@ -148,6 +178,11 @@ function RefereeActions({ t, list, table }: { t: Tournament; list: Match[]; tabl
             Start playoffs (top {t.playoff_size})
           </Button>
         )}
+        {isTeam && groupDone && playoffs.length === 0 && (
+          <Button onClick={startFinal} disabled={busy}>
+            Start the final (top 2 teams)
+          </Button>
+        )}
         {isRR && groupDone && t.playoff_size === 0 && (
           <Button onClick={finish} disabled={busy}>
             Finish: crown the table leader
@@ -172,9 +207,11 @@ function TournamentDetail({ t }: { t: Tournament }) {
   const group = list.filter((m) => m.stage === "group");
   const playoffs = list.filter((m) => m.stage === "playoff");
   const isRR = t.format === "round_robin";
-  const table = isRR ? groupStandings(group, tEntries) : [];
+  const isTeam = isTeamTournament(t);
+  const table = isRR || isTeam ? groupStandings(group, tEntries) : [];
   const champion = t.winner_entry_id ? entries.get(t.winner_entry_id) : undefined;
-  const next = list.filter((m) => m.status === "scheduled" && m.team_a.length > 0 && m.team_b.length > 0);
+  const next = list.filter((m) => m.status === "scheduled" && sidesKnown(m));
+  const final = isTeam ? playoffs[0] : undefined;
   const live = list.filter((m) => m.status === "live");
   const rounds = new Map<number, Match[]>();
   for (const m of group) rounds.set(m.bracket_round ?? 0, [...(rounds.get(m.bracket_round ?? 0) ?? []), m]);
@@ -182,7 +219,7 @@ function TournamentDetail({ t }: { t: Tournament }) {
   return (
     <div className="space-y-8">
       <PageTitle
-        subtitle={`${formatName(t.format, t.round_robin_cycles)}${isRR && t.playoff_size ? ` + top-${t.playoff_size} playoff` : ""} · ${t.mode} · ${formatLabel({ mode: t.mode, scoring: t.scoring, points_to_win: t.points_to_win, best_of: t.best_of }).split(" · ").slice(1).join(" · ")}${t.is_rated ? "" : " · unrated"}`}
+        subtitle={`${formatName(t.format, t.round_robin_cycles)}${isRR && t.playoff_size ? ` + top-${t.playoff_size} playoff` : ""} · ${t.mode} · ${formatLabel({ mode: t.mode, scoring: t.scoring, points_to_win: t.points_to_win, best_of: t.best_of }).split(" · ").slice(1).join(" · ")}${isTeam ? ` · final: ${t.final_scoring === "sideout" ? "side-out" : "rally"} to ${t.final_points_to_win}, sub at ${t.sub_threshold}` : ""}${t.is_rated ? "" : " · unrated"}`}
       >
         <span className="flex flex-wrap items-center gap-2">
           {t.name}
@@ -198,9 +235,12 @@ function TournamentDetail({ t }: { t: Tournament }) {
           <TrophyIcon className="size-10 shrink-0" />
           <div>
             <div className="text-xs font-semibold tracking-wide text-muted uppercase">Champions</div>
-            <div className="text-xl font-bold">
-              <TeamNames ids={champion.player_ids} />
-            </div>
+            <div className="text-xl font-bold">{champion.name ?? <TeamNames ids={champion.player_ids} />}</div>
+            {champion.name && (
+              <div className="text-sm text-muted">
+                <TeamNames list ids={champion.player_ids} />
+              </div>
+            )}
           </div>
         </Card>
       )}
@@ -218,7 +258,7 @@ function TournamentDetail({ t }: { t: Tournament }) {
                 </div>
                 {mine && (
                   <ButtonLink href={`/ref/score/${m.id}`} size="sm" className="mr-4">
-                    {m.status === "live" ? "Score" : "Start"}
+                    {m.status === "live" ? "Score" : m.team_a.length === 0 ? "Lineups" : "Start"}
                   </ButtonLink>
                 )}
               </div>
@@ -227,14 +267,41 @@ function TournamentDetail({ t }: { t: Tournament }) {
         </section>
       )}
 
-      {isRR ? (
+      {isRR || isTeam ? (
         <>
           <section>
             <SectionTitle>Standings</SectionTitle>
-            <StandingsTable rows={table} entries={entries} highlight={t.playoff_size} />
-            {t.playoff_size > 0 && <p className="mt-2 text-xs text-muted">Top {t.playoff_size} go through to the playoff.</p>}
+            <StandingsTable rows={table} entries={entries} highlight={isTeam ? 2 : t.playoff_size} />
+            {isTeam ? (
+              <p className="mt-2 text-xs text-muted">The top 2 teams play the final.</p>
+            ) : (
+              t.playoff_size > 0 && <p className="mt-2 text-xs text-muted">Top {t.playoff_size} go through to the playoff.</p>
+            )}
           </section>
-          {playoffs.length > 0 && (
+          {final && (
+            <section>
+              <SectionTitle>Final</SectionTitle>
+              {final.status === "live" ? (
+                <LiveMatchCard match={final} />
+              ) : (
+                <Card className="overflow-hidden">{final.status === "completed" ? <MatchRow match={final} showDate={false} /> : <UpcomingRow match={final} />}</Card>
+              )}
+            </section>
+          )}
+          {isTeam && (
+            <section>
+              <SectionTitle>Teams · matches per player</SectionTitle>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {tEntries.map((e) => (
+                  <Card key={e.id} className="space-y-2 p-3">
+                    <p className="font-semibold">{e.name ?? `Team ${e.seed}`}</p>
+                    <TeamCaps entry={e} tournamentId={t.id} />
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
+          {!isTeam && playoffs.length > 0 && (
             <section>
               <SectionTitle>Playoffs</SectionTitle>
               <Bracket matches={playoffs} />

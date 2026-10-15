@@ -52,7 +52,7 @@ export function TeamNames({ ids, className, link = true, list = false }: { ids: 
         const name = players.get(id)?.name ?? "Unknown";
         return (
           <span key={id}>
-            {i > 0 && <span className="text-muted">{!list ? " & " : i === ids.length - 1 ? " and " : ", "}</span>}
+            {i > 0 && <span className="text-muted">{!list && ids.length <= 2 ? " & " : i === ids.length - 1 ? (list ? " and " : " & ") : ", "}</span>}
             {link ? (
               <Link href={`/players/${id}`} className="hover:underline">
                 {name}

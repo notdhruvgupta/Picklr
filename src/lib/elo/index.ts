@@ -45,10 +45,32 @@ export interface EloMatch {
   mode: Mode;
   /** ISO timestamp; matches are replayed in this order (ties broken by id). */
   playedAt: string;
+  /** Everyone who played for each side (a team final can have 3). */
   teamA: string[];
   teamB: string[];
   games: GameResult[];
   pointsToWin: number;
+  /**
+   * Team final: the game split at the substitution. Each segment is rated as a
+   * short match between the players on court, weighted by its share of points.
+   */
+  segments?: EloSegment[];
+}
+
+export interface EloSegment {
+  teamA: string[];
+  teamB: string[];
+  pointsA: number;
+  pointsB: number;
+}
+
+export interface SegmentRatingInfo extends EloSegment {
+  /** Share of the match's points played in this segment. */
+  weight: number;
+  teamARating: number;
+  teamBRating: number;
+  expectedA: number;
+  mov: number;
 }
 
 export interface StartingRating {
@@ -79,6 +101,8 @@ export interface MatchRatingInfo {
   expectedA: number;
   mov: number;
   changes: RatingChange[];
+  /** Team finals: how each segment was rated. */
+  segments?: SegmentRatingInfo[];
 }
 
 export interface RatingPoint {
@@ -148,6 +172,14 @@ export function movMultiplier(games: GameResult[], pointsToWin: number, config: 
   return Math.log(margin + 1) / Math.log(config.movReferenceMargin + 1);
 }
 
+/** Margin multiplier for part of a game, scaled as if the segment were a game to its winner's score. */
+export function segmentMov(pointsA: number, pointsB: number, config: EloConfig): number {
+  if (!config.marginOfVictory) return 1;
+  const length = Math.max(pointsA, pointsB, 1);
+  const margin = Math.max(1, (Math.abs(pointsA - pointsB) * 11) / length);
+  return Math.log(margin + 1) / Math.log(config.movReferenceMargin + 1);
+}
+
 export function kFactor(matchesPlayed: number, config: EloConfig): number {
   return matchesPlayed < config.provisionalMatches ? config.kProvisional : config.kEstablished;
 }
@@ -197,20 +229,53 @@ export function computeRatings(
     const winner = matchWinner(match.games);
     if (!winner || match.teamA.length === 0 || match.teamB.length === 0) continue;
 
-    const statsA = match.teamA.map((id) => getPlayer(id)[match.mode]);
-    const statsB = match.teamB.map((id) => getPlayer(id)[match.mode]);
-    const teamARating = teamRating(statsA.map((s) => s.rating));
-    const teamBRating = teamRating(statsB.map((s) => s.rating));
-    const expectedA = expectedScore(teamARating, teamBRating);
-    const mov = movMultiplier(match.games, match.pointsToWin, config);
-    const surpriseA = (winner === "A" ? 1 : 0) - expectedA;
+    const stats = (id: string) => getPlayer(id)[match.mode];
+    // Everything is rated from pre-match ratings; changes apply once, at the end.
+    const pre = new Map([...match.teamA, ...match.teamB].map((id) => [id, stats(id).rating]));
+    const avg = (ids: string[]) => teamRating(ids.map((id) => pre.get(id) ?? stats(id).rating));
+    const k = (id: string) => kFactor(stats(id).matches, config);
+    const deltas = new Map<string, number>();
+    const add = (id: string, d: number) => deltas.set(id, (deltas.get(id) ?? 0) + d);
+
+    const teamARating = avg(match.teamA);
+    const teamBRating = avg(match.teamB);
+    let expectedA: number;
+    let mov: number;
+    let segments: SegmentRatingInfo[] | undefined;
+
+    const totalPoints = match.segments?.reduce((sum, seg) => sum + seg.pointsA + seg.pointsB, 0) ?? 0;
+    if (match.segments?.length && totalPoints > 0) {
+      segments = [];
+      expectedA = 0;
+      mov = 0;
+      for (const seg of match.segments) {
+        const weight = (seg.pointsA + seg.pointsB) / totalPoints;
+        if (weight === 0) continue;
+        const ra = avg(seg.teamA);
+        const rb = avg(seg.teamB);
+        const e = expectedScore(ra, rb);
+        const result = seg.pointsA > seg.pointsB ? 1 : seg.pointsA < seg.pointsB ? 0 : 0.5;
+        const m = segmentMov(seg.pointsA, seg.pointsB, config);
+        for (const id of seg.teamA) add(id, k(id) * weight * m * (result - e));
+        for (const id of seg.teamB) add(id, -k(id) * weight * m * (result - e));
+        expectedA += weight * e;
+        mov += weight * m;
+        segments.push({ ...seg, weight, teamARating: ra, teamBRating: rb, expectedA: e, mov: m });
+      }
+    } else {
+      expectedA = expectedScore(teamARating, teamBRating);
+      mov = movMultiplier(match.games, match.pointsToWin, config);
+      const surpriseA = (winner === "A" ? 1 : 0) - expectedA;
+      for (const id of match.teamA) add(id, k(id) * mov * surpriseA);
+      for (const id of match.teamB) add(id, -k(id) * mov * surpriseA);
+    }
 
     const changes: RatingChange[] = [];
-    const apply = (ids: string[], stats: PlayerModeStats[], team: Team, surprise: number) => {
-      ids.forEach((playerId, i) => {
-        const s = stats[i];
-        const k = kFactor(s.matches, config);
-        const delta = k * mov * surprise;
+    for (const [team, ids] of [["A", match.teamA], ["B", match.teamB]] as const) {
+      for (const playerId of ids) {
+        const s = stats(playerId);
+        const kUsed = k(playerId);
+        const delta = deltas.get(playerId) ?? 0;
         const won = winner === team;
         const before = s.rating;
         s.rating = before + delta;
@@ -226,11 +291,9 @@ export function computeRatings(
         s.peak = Math.max(s.peak, s.rating);
         s.lastPlayedAt = match.playedAt;
         s.history.push({ matchId: match.id, playedAt: match.playedAt, rating: s.rating });
-        changes.push({ matchId: match.id, playerId, mode: match.mode, team, before, after: s.rating, delta, k, won });
-      });
-    };
-    apply(match.teamA, statsA, "A", surpriseA);
-    apply(match.teamB, statsB, "B", -surpriseA);
+        changes.push({ matchId: match.id, playerId, mode: match.mode, team, before, after: s.rating, delta, k: kUsed, won });
+      }
+    }
 
     byMatch.set(match.id, {
       matchId: match.id,
@@ -241,6 +304,7 @@ export function computeRatings(
       expectedA,
       mov,
       changes,
+      ...(segments ? { segments } : {}),
     });
   }
 

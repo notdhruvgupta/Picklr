@@ -7,8 +7,8 @@
  * through Realtime, so nothing here updates local state by hand.
  */
 
-import { matchWinner, type GameResult, type Mode, type Team } from "@/lib/elo";
-import { initialState, type LiveState, type MatchFormat, type RallyEvent } from "@/lib/scoring";
+import { matchWinner, type EloSegment, type GameResult, type Mode, type Team } from "@/lib/elo";
+import { initialState, type Lineup, type LiveState, type MatchFormat, type RallyEvent } from "@/lib/scoring";
 import { check, supabase } from "@/lib/supabase";
 import type { AppSettings, Match, PlaySession, Player } from "@/lib/types";
 
@@ -46,13 +46,15 @@ export async function createMatch(input: NewMatch): Promise<Match> {
 }
 
 export async function startMatch(match: Match, firstServer: Team, format: MatchFormat): Promise<void> {
+  // A team final tracks who is on court so the substitution can be recorded.
+  const lineup: Lineup | undefined = match.sub_threshold ? { A: match.team_a, B: match.team_b } : undefined;
   check(
     await supabase
       .from("matches")
       .update({
         status: "live",
         first_server: firstServer,
-        live_state: initialState(format, firstServer),
+        live_state: initialState(format, firstServer, lineup),
         rally_count: 0,
         started_at: new Date().toISOString(),
       })
@@ -74,7 +76,7 @@ export async function fetchRallies(matchId: string): Promise<RallyEvent[]> {
   return (rows as { seq: number; event: RallyEvent }[]).map((r) => r.event);
 }
 
-export async function completeMatch(matchId: string, games: GameResult[], playedAt?: string): Promise<void> {
+export async function completeMatch(matchId: string, games: GameResult[], playedAt?: string, segments?: EloSegment[]): Promise<void> {
   const winner = matchWinner(games);
   if (!winner) throw new Error("The result needs a winner.");
   check(
@@ -83,8 +85,14 @@ export async function completeMatch(matchId: string, games: GameResult[], played
       p_games: games,
       p_winner: winner,
       p_played_at: playedAt ?? null,
+      p_segments: segments ?? null,
     }),
   );
+}
+
+/** Team tournaments: which 2 players each team fields. The database enforces fair shares. */
+export async function setLineup(matchId: string, teamA: string[], teamB: string[]): Promise<void> {
+  check(await supabase.rpc("set_lineup", { p_match_id: matchId, p_team_a: teamA, p_team_b: teamB }));
 }
 
 /** Abandon a live match and put it back in the queue. */

@@ -26,10 +26,14 @@ export function liveMatches(matches: Map<string, Match>): Match[] {
     .sort((x, y) => (x.started_at ?? "").localeCompare(y.started_at ?? ""));
 }
 
-/** Scheduled matches that have both teams, in queue order. */
+/** Both sides are known: players picked, or (team tournaments) both teams set with lineups still to pick. */
+export const sidesKnown = (m: Match) =>
+  (m.team_a.length > 0 && m.team_b.length > 0) || (m.entry_a_id !== null && m.entry_b_id !== null);
+
+/** Scheduled matches whose sides are known, in queue order. */
 export function upcomingMatches(matches: Map<string, Match>, filter?: (m: Match) => boolean): Match[] {
   return [...matches.values()]
-    .filter((m) => m.status === "scheduled" && m.team_a.length > 0 && m.team_b.length > 0 && (!filter || filter(m)))
+    .filter((m) => m.status === "scheduled" && sidesKnown(m) && (!filter || filter(m)))
     .sort((x, y) => (x.queue_position ?? 1e9) - (y.queue_position ?? 1e9) || x.created_at.localeCompare(y.created_at));
 }
 

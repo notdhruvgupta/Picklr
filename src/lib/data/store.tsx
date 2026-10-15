@@ -127,6 +127,7 @@ function toEloMatch(m: Match): EloMatch {
     teamB: m.team_b,
     games: m.games,
     pointsToWin: m.points_to_win,
+    ...(m.segments?.length ? { segments: m.segments } : {}),
   };
 }
 
